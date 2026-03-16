@@ -1,16 +1,22 @@
 import { useState, useMemo, useEffect } from "react";
-import { PALETTE } from "./utils/helpers";
+import { PALETTE, MONTH_NAMES, obfuscate, deobfuscate, isValidScriptUrl } from "./utils/helpers";
 import { useSheetData } from "./hooks/useSheetData";
 
 import Header from "./components/layout/Header";
 import FilterPanel from "./components/layout/FilterPanel";
 import SetupUrl from "./components/SetupUrl";
+import SettingsModal from "./components/SettingsModal";
 import OverviewTab from "./components/tabs/OverviewTab";
 import TransactionsTab from "./components/tabs/TransactionsTab";
 import FriendsTab from "./components/tabs/FriendsTab";
 
 export default function App() {
-  const [sheetUrl, setSheetUrl] = useState(() => localStorage.getItem("sheetUrl") || "");
+  const [sheetUrl, setSheetUrl] = useState(() => {
+    const stored = localStorage.getItem("sheetUrl");
+    if (!stored) return '';
+    const decoded = deobfuscate(stored);
+    return isValidScriptUrl(decoded) ? decoded : stored; // fallback for migration
+  });
   const { rawRecords, rawFriends, loading, error, lastUpdated, fetchData } = useSheetData();
 
   useEffect(() => {
@@ -18,12 +24,13 @@ export default function App() {
   }, [sheetUrl, fetchData]);
 
   const handleSaveUrl = (url) => {
-    localStorage.setItem("sheetUrl", url);
+    localStorage.setItem("sheetUrl", obfuscate(url));
     setSheetUrl(url);
   };
 
   const handleChangeUrl = () => {
     localStorage.removeItem("sheetUrl");
+    localStorage.removeItem("monthlyBudget");
     setSheetUrl("");
   };
 
@@ -47,10 +54,59 @@ export default function App() {
   const [filtersOpen, setFiltersOpen] = useState(true);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [activePreset, setActivePreset] = useState('all');
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [monthlyBudget, setMonthlyBudget] = useState(() => {
+    const stored = localStorage.getItem('monthlyBudget');
+    return stored ? parseFloat(stored) : 50000;
+  });
+
+  const handleSaveBudget = (val) => {
+    setMonthlyBudget(val);
+    localStorage.setItem('monthlyBudget', String(val));
+  };
 
   useEffect(() => { if (allMonths.length) setSelMonths([...allMonths]); }, [allMonths]);
   useEffect(() => { if (allBanks.length) setSelAccounts([...allBanks]); }, [allBanks]);
   useEffect(() => { if (allCategories.length) setSelCategories([...allCategories]); }, [allCategories]);
+
+  // ── PRESET / RESET ──────────────────────────────────────────────────────────
+  const applyPreset = (preset) => {
+    if (preset === activePreset) return;
+    setActivePreset(preset);
+    setSearch('');
+    setDateFrom('');
+    setDateTo('');
+    setSelTypes(['Credit','Debit','Transferd']);
+    if (allBanks.length) setSelAccounts([...allBanks]);
+    if (allCategories.length) setSelCategories([...allCategories]);
+
+    if (!preset || preset === 'all') {
+      if (allMonths.length) setSelMonths([...allMonths]);
+      return;
+    }
+
+    const now = new Date();
+    const curMonthIdx = now.getMonth(); // 0-based
+    let count = preset === 'thisMonth' ? 1 : preset === 'last3' ? 3 : preset === 'last6' ? 6 : 12;
+    const target = [];
+    for (let i = 0; i < count; i++) {
+      const idx = (curMonthIdx - i + 12) % 12;
+      target.push(MONTH_NAMES[idx]);
+    }
+    setSelMonths(allMonths.filter(m => target.includes(m)));
+  };
+
+  const resetAllFilters = () => {
+    setSelMonths([...allMonths]);
+    setSelTypes(['Credit','Debit','Transferd']);
+    setSelAccounts([...allBanks]);
+    setSelCategories([...allCategories]);
+    setSearch('');
+    setDateFrom('');
+    setDateTo('');
+    setActivePreset('all');
+  };
 
   // ── DATA PROCESSING ──────────────────────────────────────────────────────────
   const MONTH_NUM = useMemo(() => ({ Jan: 1, Feb: 2, Mar: 3, Apr:4,May:5,Jun:6,Jul:7,Aug:8,Sep:9,Oct:10,Nov:11,Dec:12 }), []);
@@ -87,10 +143,19 @@ export default function App() {
     const income = filtered.filter(r => r['Transaction Type'] === 'Credit').reduce((s, r) => s + r.Amount, 0);
     const expense = filtered.filter(r => r['Transaction Type'] === 'Debit').reduce((s, r) => s + r.Amount, 0);
     const transfers = filtered.filter(r => r['Transaction Type'] === 'Transferd').reduce((s, r) => s + r.Amount, 0);
-    const net = income - expense;
+    
+    // Calculate total net owed from friends
+    const friendsNet = rawFriends.reduce((acc, f) => {
+      const status = (f.Status || '').toLowerCase().trim();
+      if (status === 'owes') return acc - Math.abs(f.Amount);
+      if (status === 'owed' || !status) return acc + Math.abs(f.Amount);
+      return acc;
+    }, 0);
+
+    const net = income - expense + friendsNet;
     const savingsRate = income > 0 ? ((net / income) * 100).toFixed(1) : 0;
-    return { income, expense, net, transfers, savingsRate, txnCount: filtered.length };
-  }, [filtered]);
+    return { income, expense, net, transfers, savingsRate, txnCount: filtered.length, friendsNet };
+  }, [filtered, rawFriends]);
 
   const monthlyData = useMemo(() => {
     return allMonths.filter(m => selMonths.includes(m)).map(m => {
@@ -119,11 +184,30 @@ export default function App() {
 
   const friendsSummary = useMemo(() => {
     const map = {};
-    rawFriends.forEach(f => { map[f.Name] = (map[f.Name] || 0) + f.Amount; });
-    return Object.entries(map).map(([name, amount]) => ({ name, amount }));
+    rawFriends.forEach(f => {
+      const status = (f.Status || '').toLowerCase().trim();
+      let val = f.Amount;
+      if (status === 'owes') val = -Math.abs(val);
+      else if (status === 'settled') val = 0;
+      else val = Math.abs(val);
+      
+      if (!map[f.Name]) {
+        map[f.Name] = { balance: val, origAmount: f.Amount, isSettled: status === 'settled' };
+      } else {
+        map[f.Name].balance += val;
+        map[f.Name].origAmount = f.Amount;
+        map[f.Name].isSettled = status === 'settled';
+      }
+    });
+    return Object.entries(map).map(([name, data]) => ({ 
+      name, 
+      balance: data.balance,
+      displayAmount: data.balance !== 0 ? Math.abs(data.balance) : data.origAmount,
+      status: data.balance > 0 ? 'owed' : data.balance < 0 ? 'owes' : 'settled'
+    }));
   }, [rawFriends]);
 
-  const totalOwed = friendsSummary.reduce((s, f) => s + f.amount, 0);
+  const totalOwed = useMemo(() => friendsSummary.reduce((s, f) => s + f.balance, 0), [friendsSummary]);
 
   const topTxns = useMemo(() =>
     [...filtered].filter(r => r['Transaction Type'] === 'Debit' && r.Description)
@@ -141,6 +225,33 @@ export default function App() {
       .sort((a,b) => b.balance - a.balance);
   }, [rawRecords]);
 
+  // ── RECURRING EXPENSES ──────────────────────────────────────────────────────
+  const recurringExpenses = useMemo(() => {
+    const debitRows = filtered.filter(r => r['Transaction Type'] === 'Debit' && r.Description);
+    const descMonths = {};
+    debitRows.forEach(r => {
+      const key = r.Description.toLowerCase().trim();
+      if (!descMonths[key]) descMonths[key] = { desc: r.Description, months: new Set(), total: 0, category: r.Category };
+      descMonths[key].months.add(r.Month);
+      descMonths[key].total += r.Amount;
+    });
+    return Object.values(descMonths)
+      .filter(d => d.months.size >= 2)
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 8)
+      .map(d => ({ description: d.desc, monthCount: d.months.size, total: d.total, category: d.category }));
+  }, [filtered]);
+
+  // ── SPENDING TREND ────────────────────────────────────────────────────────
+  const spendingTrend = useMemo(() => {
+    if (monthlyData.length < 2) return null;
+    const last = monthlyData[monthlyData.length - 1];
+    const prev = monthlyData[monthlyData.length - 2];
+    if (!prev || prev.Expense === 0) return null;
+    const pctChange = ((last.Expense - prev.Expense) / prev.Expense * 100).toFixed(1);
+    return { pctChange: parseFloat(pctChange), lastMonth: last.month, prevMonth: prev.month };
+  }, [monthlyData]);
+
   // ── RENDER ──────────────────────────────────────────────────────────────────
   if (!sheetUrl) return <SetupUrl onSave={handleSaveUrl} />;
 
@@ -153,6 +264,14 @@ export default function App() {
         lastUpdated={lastUpdated} loading={loading}
         fetchData={fetchData} sheetUrl={sheetUrl}
         onChangeUrl={handleChangeUrl}
+        onOpenSettings={() => setSettingsOpen(true)}
+      />
+
+      <SettingsModal
+        isOpen={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        monthlyBudget={monthlyBudget}
+        onSaveBudget={handleSaveBudget}
       />
 
       <div className="app-container" style={{ maxWidth: 1400, margin: '0 auto' }}>
@@ -182,11 +301,12 @@ export default function App() {
                 allCategories={allCategories} selCategories={selCategories} setSelCategories={setSelCategories}
                 dateFrom={dateFrom} setDateFrom={setDateFrom} dateTo={dateTo} setDateTo={setDateTo}
                 search={search} setSearch={setSearch} filteredCount={filtered.length}
+                activePreset={activePreset} onPresetChange={applyPreset} onResetAll={resetAllFilters}
               />
             )}
 
             {activeTab === 'overview' && (
-              <OverviewTab kpis={kpis} totalOwed={totalOwed} friendsSummary={friendsSummary} monthlyData={monthlyData} accountData={accountData} categoryData={categoryData} topTxns={topTxns} currentBalances={currentBalances} />
+              <OverviewTab kpis={kpis} totalOwed={totalOwed} friendsSummary={friendsSummary} monthlyData={monthlyData} accountData={accountData} categoryData={categoryData} topTxns={topTxns} currentBalances={currentBalances} monthlyBudget={monthlyBudget} recurringExpenses={recurringExpenses} spendingTrend={spendingTrend} />
             )}
 
             {activeTab === 'transactions' && (

@@ -12,18 +12,28 @@ const FriendsTab = ({ friendsSummary, rawRecords, selMonths, totalOwed }) => (
             <div style={{ width: 36, height: 36, borderRadius: '50%', background: `${CAT_COLORS[i % CAT_COLORS.length]}33`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, color: CAT_COLORS[i % CAT_COLORS.length], fontWeight: 800 }}>{f.name[0]}</div>
             <div>
               <div style={{ fontWeight: 700, color: PALETTE.text }}>{f.name}</div>
-              <div style={{ fontSize: 10, color: PALETTE.muted }}>owes you</div>
+              <div style={{ fontSize: 10, color: PALETTE.muted }}>
+                {f.status === 'owed' ? 'owes you' : f.status === 'owes' ? 'you owe' : 'settled'}
+              </div>
             </div>
           </div>
           <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: 18, fontWeight: 800, color: PALETTE.green, fontFamily: 'monospace' }}>{fmtFull(f.amount)}</div>
-            <span style={{ padding: '2px 8px', borderRadius: 10, fontSize: 10, fontWeight: 700, background: `${PALETTE.red}22`, color: PALETTE.red }}>owed</span>
+            <div style={{ fontSize: 18, fontWeight: 800, color: f.status === 'owed' ? PALETTE.green : f.status === 'owes' ? PALETTE.red : PALETTE.muted, fontFamily: 'monospace' }}>
+              {fmtFull(f.displayAmount)}
+            </div>
+            <span style={{ padding: '2px 8px', borderRadius: 10, fontSize: 10, fontWeight: 700, background: f.status === 'owed' ? `${PALETTE.green}22` : f.status === 'owes' ? `${PALETTE.red}22` : `${PALETTE.muted}22`, color: f.status === 'owed' ? PALETTE.green : f.status === 'owes' ? PALETTE.red : PALETTE.muted }}>
+              {f.status}
+            </span>
           </div>
         </div>
       ))}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 16, paddingTop: 16, borderTop: `1px solid ${PALETTE.border}` }}>
-        <span style={{ fontWeight: 700, color: PALETTE.white }}>Total Owed to You</span>
-        <span style={{ fontSize: 22, fontWeight: 900, color: PALETTE.green, fontFamily: 'monospace' }}>{fmtFull(totalOwed)}</span>
+        <span style={{ fontWeight: 700, color: PALETTE.white }}>
+          {totalOwed > 0 ? "Total Owed to You" : totalOwed < 0 ? "Total You Owe" : "All Settled"}
+        </span>
+        <span style={{ fontSize: 22, fontWeight: 900, color: totalOwed > 0 ? PALETTE.green : totalOwed < 0 ? PALETTE.red : PALETTE.muted, fontFamily: 'monospace' }}>
+          {fmtFull(Math.abs(totalOwed))}
+        </span>
       </div>
     </div>
 
@@ -31,8 +41,8 @@ const FriendsTab = ({ friendsSummary, rawRecords, selMonths, totalOwed }) => (
       <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 16, color: PALETTE.white }}>📊 Friends Breakdown</div>
       <ResponsiveContainer width="100%" height={200}>
         <PieChart>
-          <Pie data={friendsSummary.map(f => ({ name: f.name, value: f.amount }))} cx="50%" cy="50%" innerRadius={45} outerRadius={75} dataKey="value" paddingAngle={4}>
-            {friendsSummary.map((_, i) => <Cell key={i} fill={CAT_COLORS[i]} />)}
+          <Pie data={friendsSummary.filter(f => f.balance > 0).map(f => ({ name: f.name, value: f.balance }))} cx="50%" cy="50%" innerRadius={45} outerRadius={75} dataKey="value" paddingAngle={4}>
+            {friendsSummary.filter(f => f.balance > 0).map((_, i) => <Cell key={i} fill={CAT_COLORS[i % CAT_COLORS.length]} />)}
           </Pie>
           <Tooltip formatter={(v) => fmtFull(v)} contentStyle={{ background: PALETTE.surface, border: `1px solid ${PALETTE.border}`, fontSize: 12 }} />
           <Legend formatter={(v) => <span style={{ fontSize: 11, color: PALETTE.muted }}>{v}</span>} />

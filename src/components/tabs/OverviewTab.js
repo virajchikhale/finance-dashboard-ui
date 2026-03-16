@@ -3,16 +3,34 @@ import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Toolti
 import { PALETTE, CAT_COLORS, fmt, fmtFull } from '../../utils/helpers';
 import KpiCard from '../KpiCard';
 import ChartTip from '../ChartTip';
+import BudgetBar from '../BudgetBar';
 
-const OverviewTab = ({ kpis, totalOwed, friendsSummary, monthlyData, accountData, categoryData, topTxns, currentBalances }) => {
+const OverviewTab = ({ kpis, totalOwed, friendsSummary, monthlyData, accountData, categoryData, topTxns, currentBalances, monthlyBudget, recurringExpenses, spendingTrend }) => {
+  const numMonths = monthlyData.length || 1;
+  const totalBudget = monthlyBudget * numMonths;
+
   return (
     <>
       <div className="grid-overview-top">
         <KpiCard label="Total Income" value={fmtFull(kpis.income)} sub={`${kpis.txnCount} transactions`} color={PALETTE.green} icon="💹" />
-        <KpiCard label="Total Expenses" value={fmtFull(kpis.expense)} sub="Debit only" color={PALETTE.red} icon="💸" />
+        <KpiCard label="Total Expenses" value={fmtFull(kpis.expense)} sub={
+          <BudgetBar spent={kpis.expense} budget={totalBudget} />
+        } color={PALETTE.red} icon="💸" />
         <KpiCard label="Net Balance" value={fmtFull(kpis.net)} sub={kpis.net >= 0 ? 'Surplus ✓' : 'Deficit ✗'} color={kpis.net >= 0 ? PALETTE.green : PALETTE.red} icon="📊" />
-        <KpiCard label="Savings Rate" value={`${kpis.savingsRate}%`} sub="of income saved" color={PALETTE.accent} icon="🎯" />
-        <KpiCard label="Friends Owed" value={fmtFull(totalOwed)} sub={`${friendsSummary.length} people`} color={PALETTE.yellow} icon="🤝" />
+        <KpiCard label="Savings Rate" value={`${kpis.savingsRate}%`} sub={
+          spendingTrend ? (
+            <span style={{ color: spendingTrend.pctChange > 0 ? PALETTE.red : PALETTE.green, fontWeight: 700 }}>
+              {spendingTrend.pctChange > 0 ? '↑' : '↓'} {Math.abs(spendingTrend.pctChange)}% vs {spendingTrend.prevMonth}
+            </span>
+          ) : 'of income saved'
+        } color={PALETTE.accent} icon="🎯" />
+        <KpiCard 
+          label={totalOwed > 0 ? "Friends Owe You" : totalOwed < 0 ? "You Owe Friends" : "Friends Balanced"} 
+          value={fmtFull(Math.abs(totalOwed))} 
+          sub={`${friendsSummary.length} people`} 
+          color={totalOwed > 0 ? PALETTE.green : totalOwed < 0 ? PALETTE.red : PALETTE.muted} 
+          icon="🤝" 
+        />
       </div>
 
       <div className="grid-overview-mid">
@@ -78,23 +96,45 @@ const OverviewTab = ({ kpis, totalOwed, friendsSummary, monthlyData, accountData
           </div>
         </div>
 
-        <div style={{ background: PALETTE.card, border: `1px solid ${PALETTE.border}`, borderRadius: 12, padding: 20 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 14, color: PALETTE.white }}>💳 Current Balances</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {currentBalances.length > 0 ? currentBalances.map((b, i) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 10, borderBottom: `1px solid ${PALETTE.border}` }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <div style={{ width: 32, height: 32, borderRadius: 8, background: `${PALETTE.accentAlt}22`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14 }}>🏦</div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: PALETTE.text }}>{b.name}</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {/* Current Balances */}
+          <div style={{ background: PALETTE.card, border: `1px solid ${PALETTE.border}`, borderRadius: 12, padding: 20 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 14, color: PALETTE.white }}>💳 Current Balances</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {currentBalances.length > 0 ? currentBalances.map((b, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 10, borderBottom: `1px solid ${PALETTE.border}` }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <div style={{ width: 32, height: 32, borderRadius: 8, background: `${PALETTE.accentAlt}22`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14 }}>🏦</div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: PALETTE.text }}>{b.name}</div>
+                  </div>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: b.balance >= 0 ? PALETTE.green : PALETTE.red, fontFamily: 'monospace' }}>
+                    {fmtFull(b.balance)}
+                  </div>
                 </div>
-                <div style={{ fontSize: 15, fontWeight: 800, color: b.balance >= 0 ? PALETTE.green : PALETTE.red, fontFamily: 'monospace' }}>
-                  {fmtFull(b.balance)}
-                </div>
-              </div>
-            )) : (
-              <div style={{ fontSize: 12, color: PALETTE.muted, textAlign: 'center', marginTop: 20 }}>No balance data available</div>
-            )}
+              )) : (
+                <div style={{ fontSize: 12, color: PALETTE.muted, textAlign: 'center', marginTop: 20 }}>No balance data available</div>
+              )}
+            </div>
           </div>
+
+          {/* Recurring Expenses */}
+          {recurringExpenses && recurringExpenses.length > 0 && (
+            <div style={{ background: PALETTE.card, border: `1px solid ${PALETTE.border}`, borderRadius: 12, padding: 20 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 14, color: PALETTE.white }}>🔄 Recurring Expenses</div>
+              <div style={{ fontSize: 10, color: PALETTE.muted, marginBottom: 12 }}>Expenses appearing in 2+ months — likely subscriptions or fixed costs</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {recurringExpenses.map((r, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0', borderBottom: `1px solid ${PALETTE.border}22` }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: PALETTE.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.description}</div>
+                      <div style={{ fontSize: 10, color: PALETTE.muted }}>{r.monthCount} months{r.category ? ` • ${r.category.split(' ').slice(0,2).join(' ')}` : ''}</div>
+                    </div>
+                    <div style={{ fontSize: 13, fontWeight: 800, color: PALETTE.yellow, fontFamily: 'monospace', flexShrink: 0 }}>{fmtFull(r.total)}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </>

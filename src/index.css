@@ -38,11 +38,87 @@ code {
 }
 
 /* Filters */
+.filter-presets {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.preset-btn {
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  border: 1px solid #2a2e42;
+  background: transparent;
+  color: #64748b;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+.preset-btn:hover {
+  border-color: #6c63ff;
+  color: #e2e8f0;
+  background: rgba(108, 99, 255, 0.08);
+}
+.preset-btn.active {
+  background: rgba(108, 99, 255, 0.15);
+  border-color: #6c63ff;
+  color: #6c63ff;
+  box-shadow: 0 0 12px rgba(108, 99, 255, 0.2);
+}
+
 .grid-filters {
   display: grid;
   grid-template-columns: repeat(6, 1fr) 1.4fr;
   gap: 14px;
   align-items: end;
+}
+
+.filter-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #2a2e42;
+}
+
+.filter-chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 10px;
+  font-weight: 700;
+  border: 1px solid;
+  cursor: default;
+}
+
+.reset-all-btn {
+  padding: 6px 14px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  border: 1px solid rgba(255, 79, 107, 0.3);
+  background: rgba(255, 79, 107, 0.08);
+  color: #ff4f6b;
+  transition: all 0.2s;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.reset-all-btn:hover {
+  background: rgba(255, 79, 107, 0.15);
+  border-color: rgba(255, 79, 107, 0.5);
 }
 
 /* Overview Configs */

@@ -1,13 +1,13 @@
 import React from 'react';
 import { PALETTE } from '../../utils/helpers';
 
-const Header = ({ tabs, activeTab, setActiveTab, filtersOpen, setFiltersOpen, lastUpdated, loading, fetchData, sheetUrl, onChangeUrl }) => (
+const Header = ({ tabs, activeTab, setActiveTab, filtersOpen, setFiltersOpen, lastUpdated, loading, fetchData, sheetUrl, onChangeUrl, onOpenSettings }) => (
   <div style={{ background: PALETTE.surface, borderBottom: `1px solid ${PALETTE.border}`, padding: '14px 24px', position: 'sticky', top: 0, zIndex: 100 }} className="flex-header">
     <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
       <div style={{ width: 32, height: 32, borderRadius: 8, background: `linear-gradient(135deg, ${PALETTE.accent}, ${PALETTE.accentAlt})`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16 }}>💰</div>
       <div>
         <div style={{ fontSize: 15, fontWeight: 800, color: PALETTE.white }}>Finance Dashboard</div>
-        <div style={{ fontSize: 10, color: PALETTE.muted }}>Personal Finance Tracker • 2025</div>
+        <div style={{ fontSize: 10, color: PALETTE.muted }}>Personal Finance Tracker • {new Date().getFullYear()}</div>
       </div>
     </div>
     
@@ -31,6 +31,12 @@ const Header = ({ tabs, activeTab, setActiveTab, filtersOpen, setFiltersOpen, la
           color: filtersOpen ? PALETTE.accent : PALETTE.muted,
           border: `1px solid ${filtersOpen ? PALETTE.accent : PALETTE.border}`
         }}>⚙ Filters {filtersOpen ? '▲' : '▼'}</button>
+
+        <button onClick={onOpenSettings} style={{
+          padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+          background: 'transparent',
+          color: PALETTE.muted, border: `1px solid ${PALETTE.border}`
+        }}>🎯 Budget</button>
 
         <button onClick={onChangeUrl} style={{
           padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer',

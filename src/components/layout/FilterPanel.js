@@ -2,18 +2,48 @@ import React from 'react';
 import { PALETTE } from '../../utils/helpers';
 import MultiSelect from '../MultiSelect';
 
+const PRESETS = [
+  { key: 'thisMonth', label: '📅 This Month' },
+  { key: 'last3', label: '📊 Last 3 Months' },
+  { key: 'last6', label: '📈 Last 6 Months' },
+  { key: 'thisYear', label: '🗓 This Year' },
+  { key: 'all', label: '🌐 All Time' },
+];
+
 const FilterPanel = ({
   allMonths, selMonths, setSelMonths,
   selTypes, setSelTypes,
   allBanks, selAccounts, setSelAccounts,
   allCategories, selCategories, setSelCategories,
   dateFrom, setDateFrom, dateTo, setDateTo,
-  search, setSearch, filteredCount
+  search, setSearch, filteredCount,
+  activePreset, onPresetChange, onResetAll
 }) => {
+  const hasActiveFilters = search || dateFrom || dateTo ||
+    selMonths.length < allMonths.length ||
+    selTypes.length < 3 ||
+    selAccounts.length < allBanks.length ||
+    selCategories.length < allCategories.length;
+
   return (
     <div style={{ background: PALETTE.surface, border: `1px solid ${PALETTE.border}`, borderRadius: 12, padding: '16px 20px', marginBottom: 20 }}>
+      
+      {/* Quick Presets */}
+      <div className="filter-presets">
+        {PRESETS.map(p => (
+          <button
+            key={p.key}
+            className={`preset-btn${activePreset === p.key ? ' active' : ''}`}
+            onClick={() => onPresetChange(p.key)}
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Filter Dropdowns + Dates + Search */}
       <div className="grid-filters">
-        <MultiSelect label="Month" options={allMonths} selected={selMonths} onChange={setSelMonths} color={PALETTE.accent} />
+        <MultiSelect label="Month" options={allMonths} selected={selMonths} onChange={v => { setSelMonths(v); onPresetChange(null); }} color={PALETTE.accent} />
         
         <MultiSelect
           label="Type" options={['Credit','Debit','Transferd']} selected={selTypes} onChange={setSelTypes} color={PALETTE.green}
@@ -50,32 +80,64 @@ const FilterPanel = ({
 
         <div>
           <div style={{ fontSize: 10, color: PALETTE.muted, fontWeight: 700, letterSpacing: 1, marginBottom: 5, textTransform: 'uppercase' }}>Search</div>
-          <div style={{ display: 'flex', gap: 6 }}>
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍  description, name…"
-              style={{ flex: 1, background: PALETTE.card, border: `1px solid ${search ? PALETTE.accent : PALETTE.border}`, borderRadius: 8, padding: '7px 10px', color: PALETTE.text, fontSize: 12, outline: 'none', minWidth: 0 }} />
-            {(search || dateFrom || dateTo) && (
-              <button onClick={() => { setSearch(''); setDateFrom(''); setDateTo(''); }} style={{
-                padding: '6px 10px', borderRadius: 8, fontSize: 11, cursor: 'pointer', flexShrink: 0,
-                background: `${PALETTE.red}22`, border: `1px solid ${PALETTE.red}44`, color: PALETTE.red, fontWeight: 700
-              }}>✕</button>
-            )}
-          </div>
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍  description, name…"
+            style={{ width: '100%', background: PALETTE.card, border: `1px solid ${search ? PALETTE.accent : PALETTE.border}`, borderRadius: 8, padding: '7px 10px', color: PALETTE.text, fontSize: 12, outline: 'none', boxSizing: 'border-box' }} />
         </div>
       </div>
 
-      <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {selMonths.length < 3 && selMonths.map(m => <span key={m} style={{ padding: '2px 8px', borderRadius: 10, fontSize: 10, fontWeight: 700, background: `${PALETTE.accent}22`, color: PALETTE.accent, border: `1px solid ${PALETTE.accent}44` }}>{m}</span>)}
+      {/* Actions Row: Chips + Reset + Count */}
+      <div className="filter-actions">
+        <div className="filter-chips">
+          {selMonths.length < allMonths.length && selMonths.length <= 3 && selMonths.map(m => (
+            <span key={m} className="filter-chip" style={{ background: `${PALETTE.accent}15`, color: PALETTE.accent, borderColor: `${PALETTE.accent}44` }}>
+              {m}
+              <span style={{ cursor: 'pointer', opacity: 0.7, marginLeft: 2 }} onClick={() => setSelMonths(selMonths.filter(x => x !== m))}>✕</span>
+            </span>
+          ))}
           {selTypes.length < 3 && selTypes.map(t => {
             const c = t === 'Credit' ? PALETTE.green : t === 'Debit' ? PALETTE.red : PALETTE.yellow;
-            return <span key={t} style={{ padding: '2px 8px', borderRadius: 10, fontSize: 10, fontWeight: 700, background: `${c}22`, color: c, border: `1px solid ${c}44` }}>{t}</span>;
+            return (
+              <span key={t} className="filter-chip" style={{ background: `${c}15`, color: c, borderColor: `${c}44` }}>
+                {t}
+                <span style={{ cursor: 'pointer', opacity: 0.7, marginLeft: 2 }} onClick={() => setSelTypes(selTypes.filter(x => x !== t))}>✕</span>
+              </span>
+            );
           })}
-          {selAccounts.length < allBanks.length && selAccounts.map(a => <span key={a} style={{ padding: '2px 8px', borderRadius: 10, fontSize: 10, fontWeight: 700, background: `${PALETTE.accentAlt}22`, color: PALETTE.accentAlt, border: `1px solid ${PALETTE.accentAlt}44` }}>{a}</span>)}
-          {dateFrom && <span style={{ padding: '2px 8px', borderRadius: 10, fontSize: 10, fontWeight: 700, background: `${PALETTE.accent}22`, color: PALETTE.accent, border: `1px solid ${PALETTE.accent}44` }}>From: {dateFrom}</span>}
-          {dateTo && <span style={{ padding: '2px 8px', borderRadius: 10, fontSize: 10, fontWeight: 700, background: `${PALETTE.accent}22`, color: PALETTE.accent, border: `1px solid ${PALETTE.accent}44` }}>To: {dateTo}</span>}
+          {selAccounts.length < allBanks.length && selAccounts.length <= 3 && selAccounts.map(a => (
+            <span key={a} className="filter-chip" style={{ background: `${PALETTE.accentAlt}15`, color: PALETTE.accentAlt, borderColor: `${PALETTE.accentAlt}44` }}>
+              {a}
+              <span style={{ cursor: 'pointer', opacity: 0.7, marginLeft: 2 }} onClick={() => setSelAccounts(selAccounts.filter(x => x !== a))}>✕</span>
+            </span>
+          ))}
+          {dateFrom && (
+            <span className="filter-chip" style={{ background: `${PALETTE.accent}15`, color: PALETTE.accent, borderColor: `${PALETTE.accent}44` }}>
+              From: {dateFrom}
+              <span style={{ cursor: 'pointer', opacity: 0.7, marginLeft: 2 }} onClick={() => setDateFrom('')}>✕</span>
+            </span>
+          )}
+          {dateTo && (
+            <span className="filter-chip" style={{ background: `${PALETTE.accent}15`, color: PALETTE.accent, borderColor: `${PALETTE.accent}44` }}>
+              To: {dateTo}
+              <span style={{ cursor: 'pointer', opacity: 0.7, marginLeft: 2 }} onClick={() => setDateTo('')}>✕</span>
+            </span>
+          )}
+          {search && (
+            <span className="filter-chip" style={{ background: `${PALETTE.accent}15`, color: PALETTE.accent, borderColor: `${PALETTE.accent}44` }}>
+              "{search}"
+              <span style={{ cursor: 'pointer', opacity: 0.7, marginLeft: 2 }} onClick={() => setSearch('')}>✕</span>
+            </span>
+          )}
         </div>
-        <div style={{ fontSize: 11, color: PALETTE.muted, flexShrink: 0 }}>
-          <span style={{ color: PALETTE.accent, fontWeight: 700 }}>{filteredCount}</span> transactions
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
+          {hasActiveFilters && (
+            <button className="reset-all-btn" onClick={onResetAll}>
+              ✕ Reset All
+            </button>
+          )}
+          <div style={{ fontSize: 11, color: PALETTE.muted }}>
+            <span style={{ color: PALETTE.accent, fontWeight: 700 }}>{filteredCount}</span> transactions
+          </div>
         </div>
       </div>
     </div>

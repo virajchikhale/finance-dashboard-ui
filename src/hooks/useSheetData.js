@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { parseSheetDate, toNum, toNumOrNull } from '../utils/helpers';
+import { parseSheetDate, toNum, toNumOrNull, sanitizeString } from '../utils/helpers';
 
 export const useSheetData = () => {
   const [rawRecords, setRawRecords] = useState([]);
@@ -32,13 +32,13 @@ export const useSheetData = () => {
           Year: year,
           Month: month,
           Date: day,
-          Description: String(row['Description'] || ''),
-          Name: String(row['Name'] || ''),
+          Description: sanitizeString(row['Description'] || ''),
+          Name: sanitizeString(row['Name'] || ''),
           Amount: toNum(row['Amount']),
-          'Transaction Type': String(row['Transaction Type'] || ''),
-          Category: String(row['Category'] || ''),
-          'Account Name': String(row['Account Name'] || ''),
-          'To Account': String(row['To Account'] || ''),
+          'Transaction Type': sanitizeString(row['Transaction Type'] || ''),
+          Category: sanitizeString(row['Category'] || ''),
+          'Account Name': sanitizeString(row['Account Name'] || ''),
+          'To Account': sanitizeString(row['To Account'] || ''),
           'Account Balance': toNumOrNull(row['Account Balance']),
           'To Account Balance': toNumOrNull(row['To Account Balance']),
         };
@@ -46,10 +46,10 @@ export const useSheetData = () => {
 
       // Parse Friends sheet
       const friends = (json.Friends || []).map(row => ({
-        Name: String(row['Name'] || ''),
-        Description: String(row['Discription'] || row['Description'] || ''),
+        Name: sanitizeString(row['Name'] || ''),
+        Description: sanitizeString(row['Discription'] || row['Description'] || ''),
         Amount: toNum(row['Amount']),
-        Status: String(row['Status'] || ''),
+        Status: sanitizeString(row['Status'] || ''),
       })).filter(r => r.Name);
 
       setRawRecords(records);

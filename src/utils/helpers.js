@@ -23,6 +23,44 @@ export const parseSheetDate = (val) => {
   return { month: '', day: 0, year: 2025 };
 };
 
+// ── SECURITY UTILITIES ──────────────────────────────────────────────────────
+const XOR_KEY = 0x5A;
+
+export const obfuscate = (str) => {
+  if (!str) return '';
+  const xored = Array.from(str).map(c => String.fromCharCode(c.charCodeAt(0) ^ XOR_KEY)).join('');
+  return btoa(xored);
+};
+
+export const deobfuscate = (str) => {
+  if (!str) return '';
+  try {
+    const decoded = atob(str);
+    return Array.from(decoded).map(c => String.fromCharCode(c.charCodeAt(0) ^ XOR_KEY)).join('');
+  } catch {
+    return str; // fallback: return as-is if not obfuscated (migration)
+  }
+};
+
+export const isValidScriptUrl = (url) => {
+  if (!url) return false;
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'https:' && (
+      parsed.hostname.endsWith('script.google.com') ||
+      parsed.hostname.endsWith('script.googleusercontent.com') ||
+      parsed.hostname.endsWith('googleusercontent.com')
+    );
+  } catch {
+    return false;
+  }
+};
+
+export const sanitizeString = (str) => {
+  if (typeof str !== 'string') return String(str || '');
+  return str.replace(/<[^>]*>/g, '').replace(/javascript:/gi, '').replace(/on\w+\s*=/gi, '');
+};
+
 export const PALETTE = {
   bg: '#0f1117', surface: '#1a1d27', card: '#1e2130',
   border: '#2a2e42', accent: '#6c63ff', accentAlt: '#ff6b9d',
