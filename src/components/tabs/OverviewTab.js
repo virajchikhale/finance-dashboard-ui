@@ -5,7 +5,7 @@ import KpiCard from '../KpiCard';
 import ChartTip from '../ChartTip';
 import BudgetBar from '../BudgetBar';
 
-const OverviewTab = ({ kpis, totalOwed, friendsSummary, monthlyData, accountData, categoryData, topTxns, currentBalances, monthlyBudget, recurringExpenses, spendingTrend }) => {
+const OverviewTab = ({ kpis, totalOwed, friendsSummary, monthlyData, accountData, categoryData, topTxns, currentBalances, monthlyBudget, recurringExpenses, spendingTrend, instalments }) => {
   const numMonths = monthlyData.length || 1;
   const totalBudget = monthlyBudget * numMonths;
 
@@ -116,6 +116,31 @@ const OverviewTab = ({ kpis, totalOwed, friendsSummary, monthlyData, accountData
               )}
             </div>
           </div>
+
+          {/* Instalments */}
+          {instalments && instalments.length > 0 && (
+            <div style={{ background: PALETTE.card, border: `1px solid ${PALETTE.border}`, borderRadius: 12, padding: 20 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6, color: PALETTE.white }}>📅 Fixed Instalments</div>
+              <div style={{ fontSize: 10, color: PALETTE.muted, marginBottom: 12 }}>Annual fixed obligations — insurance, LIC, subscriptions</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {instalments.map((inst, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0', borderBottom: `1px solid ${PALETTE.border}22` }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: PALETTE.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{inst.category}</div>
+                      <div style={{ fontSize: 10, color: PALETTE.muted }}>₹{inst.monthly.toFixed(0)}/mo • ₹{inst.daily.toFixed(1)}/day</div>
+                    </div>
+                    <div style={{ fontSize: 13, fontWeight: 800, color: PALETTE.accentAlt, fontFamily: 'monospace', flexShrink: 0 }}>{fmtFull(inst.annually)}/yr</div>
+                  </div>
+                ))}
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, paddingTop: 8, borderTop: `1px solid ${PALETTE.border}` }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: PALETTE.muted }}>Total Annual</span>
+                  <span style={{ fontSize: 13, fontWeight: 900, color: PALETTE.yellow, fontFamily: 'monospace' }}>
+                    {fmtFull(instalments.reduce((s, i) => s + i.annually, 0))}/yr
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Recurring Expenses */}
           {recurringExpenses && recurringExpenses.length > 0 && (

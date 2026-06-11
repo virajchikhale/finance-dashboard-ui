@@ -15,6 +15,24 @@ const COLUMNS = [
 
 const MONTH_ORDER = { Jan:1,Feb:2,Mar:3,Apr:4,May:5,Jun:6,Jul:7,Aug:8,Sep:9,Oct:10,Nov:11,Dec:12 };
 
+const TYPE_COLOR = {
+  Credit: PALETTE.green,
+  Debit: PALETTE.red,
+  Transferd: PALETTE.yellow,
+  Owes: PALETTE.accent,
+  Owed: PALETTE.accentAlt,
+  Setteled: PALETTE.muted,
+};
+
+const TYPE_PREFIX = {
+  Credit: '+',
+  Debit: '-',
+  Transferd: '⇄',
+  Owes: '+',   // friend owes you — positive for you
+  Owed: '-',   // you owe friend — negative for you
+  Setteled: '✓',
+};
+
 const TransactionsTab = ({ filtered }) => {
   const [sortKey, setSortKey] = useState(null);
   const [sortDir, setSortDir] = useState('asc');
@@ -89,16 +107,18 @@ const TransactionsTab = ({ filtered }) => {
           </thead>
           <tbody>
             {sorted.map((r, i) => {
-              const typeColor = r['Transaction Type'] === 'Credit' ? PALETTE.green : r['Transaction Type'] === 'Debit' ? PALETTE.red : PALETTE.yellow;
+              const txType = r['Transaction Type'];
+              const typeColor = TYPE_COLOR[txType] || PALETTE.muted;
+              const prefix = TYPE_PREFIX[txType] || '';
               return (
                 <tr key={i} style={{ borderBottom: `1px solid ${PALETTE.border}22`, background: i % 2 === 0 ? 'transparent' : `${PALETTE.surface}44` }}>
                   <td style={{ padding: '8px 14px', color: PALETTE.accent, fontWeight: 700 }}>{r.Month}</td>
                   <td style={{ padding: '8px 14px', color: PALETTE.muted }}>{r.Date || '–'}</td>
                   <td style={{ padding: '8px 14px', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.Description || '–'}</td>
                   <td style={{ padding: '8px 14px', color: PALETTE.accentAlt }}>{r.Name || '–'}</td>
-                  <td style={{ padding: '8px 14px', fontFamily: 'monospace', fontWeight: 700, color: typeColor }}>{r['Transaction Type'] === 'Debit' ? '-' : '+'}{fmtFull(r.Amount)}</td>
+                  <td style={{ padding: '8px 14px', fontFamily: 'monospace', fontWeight: 700, color: typeColor }}>{prefix}{fmtFull(r.Amount)}</td>
                   <td style={{ padding: '8px 14px' }}>
-                    <span style={{ padding: '2px 8px', borderRadius: 10, fontSize: 10, fontWeight: 700, background: `${typeColor}22`, color: typeColor }}>{r['Transaction Type']}</span>
+                    <span style={{ padding: '2px 8px', borderRadius: 10, fontSize: 10, fontWeight: 700, background: `${typeColor}22`, color: typeColor }}>{txType}</span>
                   </td>
                   <td style={{ padding: '8px 14px', color: PALETTE.muted, fontSize: 11 }}>{r.Category || '–'}</td>
                   <td style={{ padding: '8px 14px', color: PALETTE.yellow, fontWeight: 600 }}>{r['Account Name'] || '–'}</td>

@@ -3,7 +3,7 @@ import { parseSheetDate, toNum, toNumOrNull, sanitizeString } from '../utils/hel
 
 export const useSheetData = () => {
   const [rawRecords, setRawRecords] = useState([]);
-  const [rawFriends, setRawFriends] = useState([]);
+  const [rawInstalments, setRawInstalments] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(null);
@@ -17,17 +17,15 @@ export const useSheetData = () => {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
 
-      // Parse Records sheet
+      // Parse Records sheet — includes Credit, Debit, Transferd, Owes, Owed, Setteled
+      // New sheet: "Date" column holds an ISO date string (e.g. "2026-06-09T00:00:00.000Z")
+      // There is NO separate "Month" column — we derive month/day/year from the Date field.
       const records = (json.Records || []).map(row => {
-        let month = row['Month'] || '';
-        let day = Number(row['Date']) || 0;
-        let year = 2025; // default fallback
-        if (month && month.toString().startsWith('Date(')) {
-          const parsed = parseSheetDate(month);
-          month = parsed.month;
-          day = parsed.day;
-          year = parsed.year;
-        }
+        const rawDate = row['Date'] || ''; // ISO string from Apps Script
+        const parsed = parseSheetDate(rawDate);
+        const month = parsed.month;
+        const day   = parsed.day;
+        const year  = parsed.year;
         return {
           Year: year,
           Month: month,
@@ -44,16 +42,16 @@ export const useSheetData = () => {
         };
       }).filter(r => r.Month);
 
-      // Parse Friends sheet
-      const friends = (json.Friends || []).map(row => ({
-        Name: sanitizeString(row['Name'] || ''),
-        Description: sanitizeString(row['Discription'] || row['Description'] || ''),
-        Amount: toNum(row['Amount']),
-        Status: sanitizeString(row['Status'] || ''),
-      })).filter(r => r.Name);
+      // Parse Instalments sheet — fixed recurring costs
+      const instalments = (json.Instalments || []).map(row => ({
+        category: sanitizeString(row['Category'] || ''),
+        annually: toNum(row['Annually']),
+        monthly: toNum(row['Monthly']),
+        daily: toNum(row['Daily']),
+      })).filter(r => r.category && r.annually > 0);
 
       setRawRecords(records);
-      setRawFriends(friends);
+      setRawInstalments(instalments);
       setLastUpdated(new Date());
     } catch (err) {
       setError(err.message);
@@ -62,5 +60,5 @@ export const useSheetData = () => {
     }
   }, []);
 
-  return { rawRecords, rawFriends, loading, error, lastUpdated, fetchData };
+  return { rawRecords, rawInstalments, loading, error, lastUpdated, fetchData };
 };

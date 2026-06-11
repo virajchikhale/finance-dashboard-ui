@@ -2,6 +2,17 @@ import React from 'react';
 import { PALETTE } from '../../utils/helpers';
 import MultiSelect from '../MultiSelect';
 
+const ALL_TYPES = ['Credit', 'Debit', 'Transferd', 'Owes', 'Owed', 'Setteled'];
+
+const TYPE_COLORS = {
+  Credit: PALETTE.green,
+  Debit: PALETTE.red,
+  Transferd: PALETTE.yellow,
+  Owes: PALETTE.accent,
+  Owed: PALETTE.accentAlt,
+  Setteled: PALETTE.muted,
+};
+
 const PRESETS = [
   { key: 'thisMonth', label: '📅 This Month' },
   { key: 'last3', label: '📊 Last 3 Months' },
@@ -21,7 +32,7 @@ const FilterPanel = ({
 }) => {
   const hasActiveFilters = search || dateFrom || dateTo ||
     selMonths.length < allMonths.length ||
-    selTypes.length < 3 ||
+    selTypes.length < ALL_TYPES.length ||
     selAccounts.length < allBanks.length ||
     selCategories.length < allCategories.length;
 
@@ -46,9 +57,9 @@ const FilterPanel = ({
         <MultiSelect label="Month" options={allMonths} selected={selMonths} onChange={v => { setSelMonths(v); onPresetChange(null); }} color={PALETTE.accent} />
         
         <MultiSelect
-          label="Type" options={['Credit','Debit','Transferd']} selected={selTypes} onChange={setSelTypes} color={PALETTE.green}
+          label="Type" options={ALL_TYPES} selected={selTypes} onChange={setSelTypes} color={PALETTE.green}
           renderLabel={opt => {
-            const c = opt === 'Credit' ? PALETTE.green : opt === 'Debit' ? PALETTE.red : PALETTE.yellow;
+            const c = TYPE_COLORS[opt] || PALETTE.muted;
             return <span style={{ color: c, fontWeight: 600 }}>{opt}</span>;
           }}
         />
@@ -94,8 +105,8 @@ const FilterPanel = ({
               <span style={{ cursor: 'pointer', opacity: 0.7, marginLeft: 2 }} onClick={() => setSelMonths(selMonths.filter(x => x !== m))}>✕</span>
             </span>
           ))}
-          {selTypes.length < 3 && selTypes.map(t => {
-            const c = t === 'Credit' ? PALETTE.green : t === 'Debit' ? PALETTE.red : PALETTE.yellow;
+          {selTypes.length < ALL_TYPES.length && selTypes.map(t => {
+            const c = TYPE_COLORS[t] || PALETTE.muted;
             return (
               <span key={t} className="filter-chip" style={{ background: `${c}15`, color: c, borderColor: `${c}44` }}>
                 {t}
