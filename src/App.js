@@ -210,15 +210,30 @@ export default function App() {
   [filtered]);
 
   const currentBalances = useMemo(() => {
-    const balances = {};
-    rawRecords.forEach(r => {
-      if (r['Account Name'] && r['Account Balance'] !== null) balances[r['Account Name']] = r['Account Balance'];
-      if (r['To Account'] && r['To Account Balance'] !== null) balances[r['To Account']] = r['To Account Balance'];
-    });
-    return Object.entries(balances)
-      .map(([name, balance]) => ({ name, balance }))
-      .sort((a,b) => b.balance - a.balance);
-  }, [rawRecords]);
+  const balances = {};
+  rawRecords.forEach(r => {
+    const acc = r['Account Name'];
+    if (!acc) return;
+    if (!balances[acc]) balances[acc] = 0;
+
+    const type = r['Transaction Type'];
+    if (type === 'Credit') balances[acc] += r.Amount;
+    else if (type === 'Debit') balances[acc] -= r.Amount;
+    else if (type === 'Transferd') {
+      balances[acc] -= r.Amount;
+      if (r['To Account']) {
+        if (!balances[r['To Account']]) balances[r['To Account']] = 0;
+        balances[r['To Account']] += r.Amount;
+      }
+    }
+    else if (type === 'Owed') balances[acc] -= r.Amount;  // you paid for friend → money left your account
+    else if (type === 'Owes') balances[acc] += r.Amount;  // friend paid you back → money came in (or you're tracking they owe you)
+    // Setteled → no account movement, just clears the friend debt
+  });
+  return Object.entries(balances)
+    .map(([name, balance]) => ({ name, balance }))
+    .sort((a, b) => b.balance - a.balance);
+}, [rawRecords]);
 
   // ── RECURRING EXPENSES ──────────────────────────────────────────────────────
   const recurringExpenses = useMemo(() => {
