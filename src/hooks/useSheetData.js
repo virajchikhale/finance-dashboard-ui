@@ -16,6 +16,7 @@ export const useSheetData = () => {
       const res = await fetch(url);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
+      if (json && json.error) throw new Error(json.error);   // e.g. "Unauthorized" when the access key is missing or wrong
 
       // Parse Records sheet — includes Credit, Debit, Transferd, Owes, Owed, Setteled
       // New sheet: "Date" column holds an ISO date string (e.g. "2026-06-09T00:00:00.000Z")

@@ -25,7 +25,7 @@ const SetupUrl = ({ onSave }) => {
         {/* Security badge */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: `${PALETTE.green}11`, border: `1px solid ${PALETTE.green}33`, borderRadius: 10, marginBottom: 24 }}>
           <span style={{ fontSize: 16 }}>🔒</span>
-          <span style={{ fontSize: 12, color: PALETTE.green, fontWeight: 600 }}>Your URL is stored securely with obfuscation — never as plain text</span>
+          <span style={{ fontSize: 12, color: PALETTE.green, fontWeight: 600 }}>Your URL (including its access key) is kept only in this browser and is sent only to Google</span>
         </div>
 
         <form onSubmit={handleSubmit}>

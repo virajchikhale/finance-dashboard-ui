@@ -1,0 +1,29 @@
+name: ci
+on: [push, pull_request]
+permissions: { contents: read }
+jobs:
+  test-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm }
+      - run: npm ci
+      - run: npm test -- --watchAll=false
+        env: { CI: "true" }
+      - run: npm run build
+        env: { CI: "false", GENERATE_SOURCEMAP: "false", INLINE_RUNTIME_CHUNK: "false" }
+      # what ships to the browser must be clean (react-scripts is build tooling, see README)
+      - run: npm audit --omit=dev --audit-level=moderate
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t finance-dashboard .
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: gitleaks/gitleaks-action@v2
+        env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }

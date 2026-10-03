@@ -46,10 +46,10 @@ export const isValidScriptUrl = (url) => {
   if (!url) return false;
   try {
     const parsed = new URL(url);
+    // Exact hosts only: an endsWith() check would also accept look-alikes such as "evilscript.google.com"
     return parsed.protocol === 'https:' && (
-      parsed.hostname.endsWith('script.google.com') ||
-      parsed.hostname.endsWith('script.googleusercontent.com') ||
-      parsed.hostname.endsWith('googleusercontent.com')
+      parsed.hostname === 'script.google.com' ||
+      parsed.hostname === 'script.googleusercontent.com'
     );
   } catch {
     return false;
