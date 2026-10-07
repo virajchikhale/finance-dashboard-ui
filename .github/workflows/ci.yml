@@ -1,29 +1,80 @@
 name: ci
-on: [push, pull_request]
-permissions: { contents: read }
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# No paths: filters on purpose. A required check that is skipped never reports,
+# and that would block merging forever.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test-build:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 20, cache: npm }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: package-lock.json
       - run: npm ci
       - run: npm test -- --watchAll=false
-        env: { CI: "true" }
+        env:
+          CI: "true"
       - run: npm run build
-        env: { CI: "false", GENERATE_SOURCEMAP: "false", INLINE_RUNTIME_CHUNK: "false" }
-      # what ships to the browser must be clean (react-scripts is build tooling, see README)
-      - run: npm audit --omit=dev --audit-level=moderate
+        env:
+          CI: "false"
+          GENERATE_SOURCEMAP: "false"
+          INLINE_RUNTIME_CHUNK: "false"
+      - name: npm audit (high and critical, production dependencies)
+        run: |
+
+          { npm audit --omit=dev --json || test $? -eq 1; } > audit.json
+          jq -r --argjson ignore '[]' '
+            [.vulnerabilities[].via[] | select(type == "object")
+              | select(.severity == "high" or .severity == "critical")
+              | select((.url | split("/") | last) as $id | ($ignore | index($id)) | not)
+              | "\(.severity) \(.name): \(.title) (\(.url))"] | unique
+            | if length == 0 then "no un-ignored high/critical advisories" else (.[], halt_error(1)) end' audit.json
+
   docker:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - run: docker build -t finance-dashboard .
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - run: docker compose config -q
+      - run: docker build -t ci-web .
+
   secrets:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-        with: { fetch-depth: 0 }
-      - uses: gitleaks/gitleaks-action@v2
-        env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # The single check to require in branch protection. Job renames above never break it.
+  ci-gate:
+    if: always()
+    needs: [test-build, docker, secrets]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Fail unless every job succeeded
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          echo "$NEEDS"
+          echo "$NEEDS" | jq -e 'all(.[]; .result == "success")' > /dev/null
