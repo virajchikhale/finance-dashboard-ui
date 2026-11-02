@@ -8,7 +8,7 @@ COPY src ./src
 ENV CI=false GENERATE_SOURCEMAP=false INLINE_RUNTIME_CHUNK=false
 RUN npm run build
 
-FROM nginxinc/nginx-unprivileged:1.27-alpine
+FROM nginxinc/nginx-unprivileged:1.31-alpine
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY security-headers.inc /etc/nginx/conf.d/security-headers.inc
 COPY --from=build /app/build /usr/share/nginx/html
