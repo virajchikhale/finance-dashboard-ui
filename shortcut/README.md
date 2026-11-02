@@ -4,12 +4,12 @@
 
 ## What it does
 
-1. Loads friends, categories and accounts from the sheet (`GET …&action=lists`). If that fails (for example a wrong key) it shows the reason and stops.
+1. Loads friends, categories and accounts from the sheet (`GET …&action=lists`), most recently used first. If that fails (for example a wrong key) it shows the reason and stops.
 2. Asks for amount and description. The date is today (`yyyy-MM-dd`).
 3. Asks for the type: Credit, Debit, Transfer, Owes, Owed or Settled.
    - Owes, Owed and Settled also ask for the friend.
    - Transfer also asks for the target account.
-4. Asks for the category and the account, then shows a summary.
+4. Asks for the category and the account, then shows a summary. The Name and To Account lines appear only for the types that ask for them.
 5. Sends the entry with a unique `id` (time plus a random number), so a retry is never saved twice.
 6. Shows "Added Successfully", or the script's error message.
 

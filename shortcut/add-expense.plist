@@ -616,6 +616,59 @@
 		</dict>
 		<dict>
 			<key>WFWorkflowActionIdentifier</key>
+			<string>is.workflow.actions.gettext</string>
+			<key>WFWorkflowActionParameters</key>
+			<dict>
+				<key>UUID</key>
+				<string>906BE6E3-B443-4999-87A4-A6B1B74CD497</string>
+				<key>WFTextActionText</key>
+				<dict>
+					<key>Value</key>
+					<dict>
+						<key>attachmentsByRange</key>
+						<dict>
+							<key>{29, 1}</key>
+							<dict>
+								<key>Type</key>
+								<string>Variable</string>
+								<key>VariableName</key>
+								<string>txName</string>
+							</dict>
+						</dict>
+						<key>string</key>
+						<string>
+Name                      = ￼</string>
+					</dict>
+					<key>WFSerializationType</key>
+					<string>WFTextTokenString</string>
+				</dict>
+			</dict>
+		</dict>
+		<dict>
+			<key>WFWorkflowActionIdentifier</key>
+			<string>is.workflow.actions.setvariable</string>
+			<key>WFWorkflowActionParameters</key>
+			<dict>
+				<key>WFInput</key>
+				<dict>
+					<key>Value</key>
+					<dict>
+						<key>OutputName</key>
+						<string>Text</string>
+						<key>OutputUUID</key>
+						<string>906BE6E3-B443-4999-87A4-A6B1B74CD497</string>
+						<key>Type</key>
+						<string>ActionOutput</string>
+					</dict>
+					<key>WFSerializationType</key>
+					<string>WFTextTokenAttachment</string>
+				</dict>
+				<key>WFVariableName</key>
+				<string>summaryName</string>
+			</dict>
+		</dict>
+		<dict>
+			<key>WFWorkflowActionIdentifier</key>
 			<string>is.workflow.actions.conditional</string>
 			<key>WFWorkflowActionParameters</key>
 			<dict>
@@ -889,6 +942,59 @@
 		</dict>
 		<dict>
 			<key>WFWorkflowActionIdentifier</key>
+			<string>is.workflow.actions.gettext</string>
+			<key>WFWorkflowActionParameters</key>
+			<dict>
+				<key>UUID</key>
+				<string>87DA8E74-514C-457A-A864-AE531D3295A5</string>
+				<key>WFTextActionText</key>
+				<dict>
+					<key>Value</key>
+					<dict>
+						<key>attachmentsByRange</key>
+						<dict>
+							<key>{26, 1}</key>
+							<dict>
+								<key>Type</key>
+								<string>Variable</string>
+								<key>VariableName</key>
+								<string>txToAccount</string>
+							</dict>
+						</dict>
+						<key>string</key>
+						<string>
+To Account             = ￼</string>
+					</dict>
+					<key>WFSerializationType</key>
+					<string>WFTextTokenString</string>
+				</dict>
+			</dict>
+		</dict>
+		<dict>
+			<key>WFWorkflowActionIdentifier</key>
+			<string>is.workflow.actions.setvariable</string>
+			<key>WFWorkflowActionParameters</key>
+			<dict>
+				<key>WFInput</key>
+				<dict>
+					<key>Value</key>
+					<dict>
+						<key>OutputName</key>
+						<string>Text</string>
+						<key>OutputUUID</key>
+						<string>87DA8E74-514C-457A-A864-AE531D3295A5</string>
+						<key>Type</key>
+						<string>ActionOutput</string>
+					</dict>
+					<key>WFSerializationType</key>
+					<string>WFTextTokenAttachment</string>
+				</dict>
+				<key>WFVariableName</key>
+				<string>summaryToAccount</string>
+			</dict>
+		</dict>
+		<dict>
+			<key>WFWorkflowActionIdentifier</key>
 			<string>is.workflow.actions.conditional</string>
 			<key>WFWorkflowActionParameters</key>
 			<dict>
@@ -920,33 +1026,33 @@
 								<key>VariableName</key>
 								<string>txTransactionType</string>
 							</dict>
-							<key>{137, 1}</key>
+							<key>{108, 1}</key>
 							<dict>
 								<key>Type</key>
 								<string>Variable</string>
 								<key>VariableName</key>
-								<string>txName</string>
+								<string>summaryName</string>
 							</dict>
-							<key>{165, 1}</key>
+							<key>{136, 1}</key>
 							<dict>
 								<key>Type</key>
 								<string>Variable</string>
 								<key>VariableName</key>
 								<string>txCategory</string>
 							</dict>
-							<key>{189, 1}</key>
+							<key>{160, 1}</key>
 							<dict>
 								<key>Type</key>
 								<string>Variable</string>
 								<key>VariableName</key>
 								<string>txFromAccount</string>
 							</dict>
-							<key>{216, 1}</key>
+							<key>{161, 1}</key>
 							<dict>
 								<key>Type</key>
 								<string>Variable</string>
 								<key>VariableName</key>
-								<string>txToAccount</string>
+								<string>summaryToAccount</string>
 							</dict>
 							<key>{30, 1}</key>
 							<dict>
@@ -974,44 +1080,13 @@
 						<string>Date                        = ￼
 Description            = ￼
 Amount                  = ￼
-Transaction Type  = ￼
-Name                      = ￼
+Transaction Type  = ￼￼
 Category                = ￼
-From Account        = ￼
-To Account             = ￼</string>
+From Account        = ￼￼</string>
 					</dict>
 					<key>WFSerializationType</key>
 					<string>WFTextTokenString</string>
 				</dict>
-			</dict>
-		</dict>
-		<dict>
-			<key>WFWorkflowActionIdentifier</key>
-			<string>is.workflow.actions.text.replace</string>
-			<key>WFWorkflowActionParameters</key>
-			<dict>
-				<key>UUID</key>
-				<string>4B9A7817-B365-42C5-82AC-E0ACD51A37D9</string>
-				<key>WFInput</key>
-				<dict>
-					<key>Value</key>
-					<dict>
-						<key>OutputName</key>
-						<string>Text</string>
-						<key>OutputUUID</key>
-						<string>4A60FC0E-DBF4-4392-BC66-A46D35A60C05</string>
-						<key>Type</key>
-						<string>ActionOutput</string>
-					</dict>
-					<key>WFSerializationType</key>
-					<string>WFTextTokenAttachment</string>
-				</dict>
-				<key>WFReplaceTextFind</key>
-				<string>\n[^=\n]*=[ \t]*(?=\n|$)</string>
-				<key>WFReplaceTextRegularExpression</key>
-				<true/>
-				<key>WFReplaceTextReplace</key>
-				<string></string>
 			</dict>
 		</dict>
 		<dict>
@@ -1028,9 +1103,9 @@ To Account             = ￼</string>
 							<key>{0, 1}</key>
 							<dict>
 								<key>OutputName</key>
-								<string>Updated Text</string>
+								<string>Text</string>
 								<key>OutputUUID</key>
-								<string>4B9A7817-B365-42C5-82AC-E0ACD51A37D9</string>
+								<string>4A60FC0E-DBF4-4392-BC66-A46D35A60C05</string>
 								<key>Type</key>
 								<string>ActionOutput</string>
 							</dict>

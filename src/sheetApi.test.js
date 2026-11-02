@@ -153,6 +153,20 @@ describe('Code.gs doGet', () => {
     });
   });
 
+  test('lists put the most recently used items first', () => {
+    const { post, get } = load();
+    post({ date: '2026-01-01', description: 'a', amount: '1', transactionType: 'Owes', name: 'Rohan', category: 'Trip', accountName: 'SBI' });
+    post({ date: '2026-01-02', description: 'b', amount: '1', transactionType: 'Transfer', accountName: 'SBI', toAccount: 'HDFCCC' });
+    post({ date: '2026-01-03', description: 'c', amount: '1', transactionType: 'Debit', category: 'Rent & Housing', accountName: 'SBI' });
+    expect(get({ action: 'lists' })).toMatchObject({
+      categories: ['Rent & Housing', 'Trip'],
+      accounts: ['SBI', 'HDFCCC'],
+      friends: ['Rohan', 'Mama'], // Mama is unused, so it goes after Rohan
+    });
+    post({ date: '2026-01-04', description: 'd', amount: '1', transactionType: 'Debit', category: 'Trip', accountName: 'HDFCCC' });
+    expect(get({ action: 'lists' })).toMatchObject({ categories: ['Trip', 'Rent & Housing'], accounts: ['HDFCCC', 'SBI'] });
+  });
+
   test('sheet dump keeps the first of two same-named columns', () => {
     expect(load().get({}).Dropdowns[0].Category).toBe('Rent & Housing');
   });

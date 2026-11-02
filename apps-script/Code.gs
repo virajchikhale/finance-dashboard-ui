@@ -7,7 +7,7 @@
  *   2. Deploy > New deployment > Web app > Execute as: Me, Who has access: Anyone.
  *      After editing this file use Deploy > Manage deployments > Edit > New version, so the URL stays the same.
  *   3. Dashboard:  <web app URL>?key=<API_KEY>
- *      Shortcut:    GET  <web app URL>?key=<API_KEY>&action=lists   -> dropdown lists for the pickers
+ *      Shortcut:    GET  <web app URL>?key=<API_KEY>&action=lists   -> dropdown lists for the pickers, most recently used first
  *                   POST <web app URL>?key=<API_KEY>                 -> add one row to Records
  *
  * Without a configured API_KEY every request is refused (it fails closed).
@@ -128,6 +128,33 @@ function readLists_(ss) {
   return out;
 }
 
+// Records columns that use each list. A transfer's target account counts as using that account.
+const LIST_USAGE = {
+  categories: [COLUMNS.category],
+  accounts: [COLUMNS.accountName, COLUMNS.toAccount],
+  friends: [COLUMNS.name],
+};
+
+// Puts the most recently used items first. Recency is the row position in Records (lower row = newer).
+// Items never used keep their Dropdowns order after the used ones.
+function sortByRecentUse_(lists, records) {
+  const out = Object.assign({}, lists);
+  Object.keys(LIST_USAGE).forEach(list => {
+    const lastUsed = {};
+    records.forEach((rec, row) => {
+      LIST_USAGE[list].forEach(col => {
+        const v = str_(rec[col]);
+        if (v) lastUsed[v] = row;
+      });
+    });
+    out[list] = (lists[list] || [])
+      .map((item, i) => ({ item, i, used: item in lastUsed ? lastUsed[item] : -1 }))
+      .sort((a, b) => b.used - a.used || a.i - b.i)
+      .map(x => x.item);
+  });
+  return out;
+}
+
 function str_(v) {
   return v === undefined || v === null ? '' : String(v).trim();
 }
@@ -232,7 +259,10 @@ function doGet(e) {
   if (auth) return json_({ error: auth });
 
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  if (params.action === 'lists') return json_(readLists_(ss));
+  if (params.action === 'lists') {
+    const records = ss.getSheetByName(RECORDS_SHEET);
+    return json_(sortByRecentUse_(readLists_(ss), records ? sheetToObjects_(records) : []));
+  }
 
   const output = {};
   READ_SHEETS.forEach(name => {
