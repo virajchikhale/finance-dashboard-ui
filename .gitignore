@@ -25,3 +25,10 @@ yarn-error.log*
 .env
 .env.*
 !.env.example
+
+# Built shortcuts contain the API key
+*.shortcut
+
+# Local scratch files: real sheet exports and ad-hoc scripts stay off git
+/test.json
+/test.py

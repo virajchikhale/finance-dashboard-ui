@@ -10,6 +10,18 @@ export const toNumOrNull = (v) => {
   return isNaN(n) ? null : n;
 };
 
+// ── TRANSACTION TYPES ───────────────────────────────────────────────────────
+export const TX_TYPES = ['Credit', 'Debit', 'Transfer', 'Owes', 'Owed', 'Settled'];
+// Owes / Owed / Settled track money between you and friends, not income or expense
+export const FRIEND_TYPES = new Set(['Owes', 'Owed', 'Settled']);
+// Old spellings from rows entered before Nov 2026
+const LEGACY_TYPES = { Transferd: 'Transfer', Setteled: 'Settled' };
+export const normalizeType = (t) => LEGACY_TYPES[t] || t;
+
+// Rows that set a starting balance: they count toward balances, not toward income or spending
+export const OPENING_CATEGORY = 'Opening Balance';
+export const isOpeningBalance = (r) => r.Category === OPENING_CATEGORY;
+
 export const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
 export const parseSheetDate = (val) => {
@@ -61,14 +73,17 @@ export const sanitizeString = (str) => {
   return str.replace(/<[^>]*>/g, '').replace(/javascript:/gi, '').replace(/on\w+\s*=/gi, '');
 };
 
-export const PALETTE = {
-  bg: '#0f1117', surface: '#1a1d27', card: '#1e2130',
-  border: '#2a2e42', accent: '#6c63ff', accentAlt: '#ff6b9d',
-  green: '#00d4aa', red: '#ff4f6b', yellow: '#ffc542',
-  text: '#e2e8f0', muted: '#64748b', white: '#ffffff'
+// ── MONEY ───────────────────────────────────────────────────────────────────
+const INR = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 });
+// ₹1,23,456 (no sign)
+export const inr = (n) => `₹${INR.format(Math.abs(Math.round(n || 0)))}`;
+// +₹1,234 / −₹1,234 (true minus sign)
+export const inrSigned = (n) => `${n < 0 ? '−' : n > 0 ? '+' : ''}${inr(n)}`;
+// Short axis labels: ₹950, ₹12k, ₹1.2L
+export const inrShort = (n) => {
+  const a = Math.abs(n);
+  const sign = n < 0 ? '−' : '';
+  if (a >= 100000) return `${sign}₹${(a / 100000).toFixed(a >= 1000000 ? 0 : 1)}L`;
+  if (a >= 1000) return `${sign}₹${Math.round(a / 1000)}k`;
+  return `${sign}₹${Math.round(a)}`;
 };
-
-export const CAT_COLORS = ['#6c63ff','#ff6b9d','#00d4aa','#ffc542','#ff4f6b','#4ecdc4','#45b7d1','#f7dc6f','#82e0aa','#f1948a','#85c1e9','#c39bd3','#f0b27a','#a9cce3','#a3e4d7','#fad7a0','#d2b4de'];
-
-export const fmt = (n) => n >= 1000 ? `₹${(n/1000).toFixed(1)}k` : `₹${n}`;
-export const fmtFull = (n) => `₹${Math.abs(n).toLocaleString('en-IN')}`;

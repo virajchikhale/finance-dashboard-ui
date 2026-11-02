@@ -5,3 +5,5 @@ build
 *.md
 .env*
 coverage
+apps-script
+shortcut

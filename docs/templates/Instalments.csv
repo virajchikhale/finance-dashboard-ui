@@ -1,0 +1,4 @@
+Category,Daily,Monthly,Quarterly,Half annually,Annually
+Health insurance,=F2/365,=F2/12,=F2/4,=F2/2,12000
+Life insurance,=F3/365,=F3/12,=F3/4,=F3/2,9600
+Cloud storage,=F4/365,=F4/12,=F4/4,=F4/2,1300

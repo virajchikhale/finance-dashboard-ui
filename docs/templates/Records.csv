@@ -1,0 +1,11 @@
+Date,Description,Name,Amount,Transaction Type,Category,Account Name,To Account,ID,Entered At
+2026-11-01,Opening balance,,25000,Credit,Opening Balance,Bank,,,
+2026-11-01,Opening balance,,2000,Credit,Opening Balance,Cash,,,
+2026-11-01,Card bill outstanding,,4500,Debit,Opening Balance,Card,,,
+2026-11-01,Concert tickets I paid for,Alex,1200,Owed,Opening Balance,,,,
+2026-11-02,Groceries,,850,Debit,Groceries,Bank,,,
+2026-11-02,Lunch,,220,Debit,Eating Out,Card,,,
+2026-11-03,Salary,,60000,Credit,Salary,Bank,,,
+2026-11-03,Move to cash,,3000,Transfer,,Bank,Cash,,
+2026-11-04,Paid Alex's cab,Alex,300,Owed,Travel,Cash,,,
+2026-11-05,Sam paid my movie ticket,Sam,250,Owes,Eating Out,,,,

@@ -1,82 +1,64 @@
 import React, { useState, useEffect } from 'react';
-import { PALETTE } from '../utils/helpers';
+import Icon from './Icon';
 
-const SettingsModal = ({ isOpen, onClose, monthlyBudget, onSaveBudget }) => {
+const SettingsModal = ({ isOpen, onClose, monthlyBudget, onSaveBudget, accounts, creditAccounts, onSaveCredit, onDisconnect }) => {
   const [budget, setBudget] = useState(monthlyBudget);
+  const [credit, setCredit] = useState(creditAccounts);
 
+  useEffect(() => { if (isOpen) { setBudget(monthlyBudget); setCredit(creditAccounts); } }, [isOpen, monthlyBudget, creditAccounts]);
   useEffect(() => {
-    setBudget(monthlyBudget);
-  }, [monthlyBudget, isOpen]);
+    if (!isOpen) return undefined;
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
-  const handleSave = () => {
-    const val = parseFloat(budget) || 0;
-    onSaveBudget(val);
+  const save = () => {
+    onSaveBudget(Math.max(0, parseFloat(budget) || 0));
+    onSaveCredit(credit);
     onClose();
   };
+  const toggle = (name) => setCredit(c => (c.includes(name) ? c.filter(x => x !== name) : [...c, name]));
 
   return (
-    <div onClick={onClose} style={{
-      position: 'fixed', inset: 0, zIndex: 9999,
-      background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      padding: 20, animation: 'fadeIn 0.2s ease'
-    }}>
-      <div onClick={e => e.stopPropagation()} style={{
-        background: PALETTE.surface, borderRadius: 16,
-        border: `1px solid ${PALETTE.border}`, padding: '28px 24px',
-        width: '100%', maxWidth: 420,
-        boxShadow: '0 20px 60px rgba(0,0,0,0.4)'
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
-          <div>
-            <div style={{ fontSize: 18, fontWeight: 800, color: PALETTE.white }}>⚙️ Settings</div>
-            <div style={{ fontSize: 12, color: PALETTE.muted, marginTop: 2 }}>Configure your dashboard</div>
-          </div>
-          <button onClick={onClose} style={{
-            width: 32, height: 32, borderRadius: 8, border: `1px solid ${PALETTE.border}`,
-            background: 'transparent', color: PALETTE.muted, fontSize: 16,
-            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center'
-          }}>✕</button>
+    <div className="overlay" onClick={onClose}>
+      <div className="modal" role="dialog" aria-modal="true" aria-labelledby="settings-title" onClick={e => e.stopPropagation()}>
+        <div className="modal-head">
+          <h2 id="settings-title" className="section-title">Settings</h2>
+          <button type="button" className="btn btn-ghost" onClick={onClose} aria-label="Close"><Icon name="close" /></button>
         </div>
 
-        <div style={{ marginBottom: 24 }}>
-          <label style={{ fontSize: 11, color: PALETTE.muted, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', display: 'block', marginBottom: 8 }}>
-            Monthly Budget (₹)
+        <div className="modal-section">
+          <label className="field">
+            <span className="field-label">Monthly spending budget (₹)</span>
+            <input className="input num" type="number" inputMode="numeric" min="0" value={budget} onChange={e => setBudget(e.target.value)} />
           </label>
-          <input
-            type="number"
-            value={budget}
-            onChange={e => setBudget(e.target.value)}
-            placeholder="50000"
-            style={{
-              width: '100%', padding: '12px 16px', borderRadius: 8,
-              background: PALETTE.card, border: `1px solid ${PALETTE.border}`,
-              color: PALETTE.text, fontSize: 16, fontWeight: 700,
-              fontFamily: 'monospace', outline: 'none', boxSizing: 'border-box',
-              transition: 'border-color 0.2s'
-            }}
-            onFocus={e => e.target.style.borderColor = PALETTE.accent}
-            onBlur={e => e.target.style.borderColor = PALETTE.border}
-          />
-          <div style={{ fontSize: 11, color: PALETTE.muted, marginTop: 6 }}>
-            This is used to track your spending against a target. The budget bar will appear on the Overview tab.
+          <span className="hint">Used for “Budget left” and the month-end projection. Set 0 to hide it.</span>
+        </div>
+
+        <div className="modal-section">
+          <span className="field-label">Credit cards and pay-later accounts</span>
+          <span className="hint">Their balance is shown as money you owe and is subtracted from net worth.</span>
+          <div className="check-grid">
+            {accounts.map(name => (
+              <label key={name} className="check">
+                <input type="checkbox" checked={credit.includes(name)} onChange={() => toggle(name)} /> {name}
+              </label>
+            ))}
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: 10 }}>
-          <button onClick={onClose} style={{
-            flex: 1, padding: '12px', borderRadius: 8, fontSize: 13, fontWeight: 700,
-            background: 'transparent', border: `1px solid ${PALETTE.border}`,
-            color: PALETTE.muted, cursor: 'pointer', transition: 'all 0.2s'
-          }}>Cancel</button>
-          <button onClick={handleSave} style={{
-            flex: 1, padding: '12px', borderRadius: 8, fontSize: 13, fontWeight: 700,
-            background: PALETTE.accent, border: 'none',
-            color: PALETTE.white, cursor: 'pointer', transition: 'all 0.2s',
-            boxShadow: `0 4px 12px ${PALETTE.accent}44`
-          }}>Save Settings</button>
+        <div className="modal-section">
+          <span className="field-label">Data source</span>
+          <span className="hint">Disconnecting removes the saved script URL and key from this browser.</span>
+          <div><button type="button" className="btn btn-danger" onClick={onDisconnect}>Disconnect sheet</button></div>
+        </div>
+
+        <div className="modal-actions">
+          <button type="button" className="btn" onClick={onClose}>Cancel</button>
+          <button type="button" className="btn btn-primary" onClick={save}>Save</button>
         </div>
       </div>
     </div>

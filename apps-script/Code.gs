@@ -1,0 +1,357 @@
+/**
+ * @OnlyCurrentDoc
+ * (Limits the script to the spreadsheet it is attached to; it cannot open your other Drive files.)
+ *
+ * JSON API for the finance sheet: the dashboard reads through it, the Apple Shortcut writes through it.
+ * Full setup guide: docs/apps-script.md
+ *
+ * Two keys, set in Project Settings > Script properties (never in this file or in git):
+ *   READ_KEY   used by the dashboard. Can read the sheet, cannot add rows.
+ *   WRITE_KEY  used by the Shortcut. Can add rows and read the dropdown lists, cannot read your records.
+ * Generate each with `openssl rand -hex 24`. They must be different and 32+ characters.
+ * Without both keys every request is refused (it fails closed).
+ *
+ *   GET  <web app URL>?key=<READ_KEY>                        -> Records, Instalments, Dropdowns
+ *   GET  <web app URL>?key=<READ_KEY or WRITE_KEY>&action=lists -> dropdown lists for the Shortcut pickers,
+ *                                                               most recently used first
+ *   POST <web app URL>?key=<WRITE_KEY>                       -> add one row to Records
+ *
+ * POST fields (form fields or a JSON body):
+ *   date             YYYY-MM-DD (or anything Date() understands). Empty = today.
+ *   description      required
+ *   amount           required, positive number ("1,250" is fine)
+ *   transactionType  Credit | Debit | Transfer | Owes | Owed | Settled
+ *   category         must be in Dropdowns > Category (or "Opening Balance"); required for Debit
+ *   accountName      must be in Dropdowns > Bank Accounts; optional for Owes and Settled
+ *   toAccount        Transfer only; must be a different bank account
+ *   name             Owes / Owed / Settled only; must be in Dropdowns > Friends
+ *   id               optional but recommended: a UUID from the Shortcut. A repeated id is not saved twice.
+ *
+ * Opening balances (start of a fresh sheet):
+ *   - account:  Credit (or Debit for a negative balance), category "Opening Balance", accountName set
+ *   - friend:   Owes / Owed, category "Opening Balance", name set, accountName left empty
+ *               (no account is touched, only the friend's balance)
+ */
+
+const READ_SHEETS = ['Records', 'Instalments', 'Dropdowns'];
+const RECORDS_SHEET = 'Records';
+const DROPDOWNS_SHEET = 'Dropdowns';
+
+const TYPES = ['Credit', 'Debit', 'Transfer', 'Owes', 'Owed', 'Settled'];
+const FRIEND_TYPES = ['Owes', 'Owed', 'Settled'];
+// Old spellings still sent by an older Shortcut are saved under the new names
+const LEGACY_TYPES = { Transferd: 'Transfer', Setteled: 'Settled' };
+const OPENING_CATEGORY = 'Opening Balance';
+
+// Records sheet headers, in the order new sheets should have them. Matched by name, not position.
+const COLUMNS = {
+  date: 'Date',
+  description: 'Description',
+  name: 'Name',
+  amount: 'Amount',
+  transactionType: 'Transaction Type',
+  category: 'Category',
+  accountName: 'Account Name',
+  toAccount: 'To Account',
+  id: 'ID',
+  enteredAt: 'Entered At',
+};
+// Added automatically to the header row if missing
+const AUTO_COLUMNS = ['id', 'enteredAt'];
+
+// Dropdowns sheet: list name -> header
+const LISTS = { categories: 'Category', accounts: 'Bank Accounts', friends: 'Friends' };
+
+// ── helpers ──────────────────────────────────────────────────────────────────
+
+function json_(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
+}
+
+function fail_(message) {
+  return json_({ success: false, error: message });
+}
+
+// Compares in time proportional to the length only, so response timing does not leak a matching prefix
+function safeEquals_(a, b) {
+  a = String(a || '');
+  b = String(b || '');
+  let diff = a.length ^ b.length;
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    diff |= (a.charCodeAt(i) || 0) ^ (b.charCodeAt(i) || 0);
+  }
+  return diff === 0;
+}
+
+const MIN_KEY_LENGTH = 32;
+
+// Returns an error message, or null when the request carries a key allowed for `scope`
+// ('read', 'write' or 'lists': the lists are needed by the Shortcut and contain no amounts).
+function authError_(params, scope) {
+  const props = PropertiesService.getScriptProperties();
+  const readKey = props.getProperty('READ_KEY') || '';
+  const writeKey = props.getProperty('WRITE_KEY') || '';
+  if (readKey.length < MIN_KEY_LENGTH || writeKey.length < MIN_KEY_LENGTH) {
+    return `Server not configured: set the READ_KEY and WRITE_KEY script properties (${MIN_KEY_LENGTH}+ characters each).`;
+  }
+  if (readKey === writeKey) return 'Server not configured: READ_KEY and WRITE_KEY must be different.';
+  const allowed = scope === 'read' ? [readKey] : scope === 'write' ? [writeKey] : [readKey, writeKey];
+  // Compare against every allowed key so timing does not reveal which one matched
+  let ok = false;
+  allowed.forEach(k => { if (safeEquals_(params.key, k)) ok = true; });
+  return ok ? null : 'Unauthorized';
+}
+
+// Header -> column index. When a header appears twice the first one wins, so a stray
+// duplicate header (e.g. an empty second "Category") cannot overwrite the real column.
+function headerIndex_(headers) {
+  const idx = {};
+  headers.forEach((h, i) => {
+    const key = String(h).trim();
+    if (key && !(key in idx)) idx[key] = i;
+  });
+  return idx;
+}
+
+function sheetToObjects_(sheet) {
+  const [headers, ...rows] = sheet.getDataRange().getValues();
+  const idx = headerIndex_(headers);
+  return rows
+    .filter(r => r.some(c => c !== '' && c !== null))
+    .map(row => {
+      const obj = {};
+      Object.keys(idx).forEach(h => {
+        const val = row[idx[h]];
+        obj[h] = val instanceof Date ? val.toISOString() : (val ?? '');
+      });
+      return obj;
+    });
+}
+
+function readLists_(ss) {
+  const out = { categories: [], accounts: [], friends: [], types: TYPES.slice() };
+  const sheet = ss.getSheetByName(DROPDOWNS_SHEET);
+  if (!sheet) return out;
+  const [headers, ...rows] = sheet.getDataRange().getValues();
+  const idx = headerIndex_(headers);
+  Object.keys(LISTS).forEach(list => {
+    const col = idx[LISTS[list]];
+    if (col === undefined) return;
+    out[list] = rows.map(r => String(r[col]).trim()).filter(Boolean);
+  });
+  return out;
+}
+
+// Records columns that use each list. A transfer's target account counts as using that account.
+const LIST_USAGE = {
+  categories: [COLUMNS.category],
+  accounts: [COLUMNS.accountName, COLUMNS.toAccount],
+  friends: [COLUMNS.name],
+};
+
+// Puts the most recently used items first. Recency is the row position in Records (lower row = newer).
+// Items never used keep their Dropdowns order after the used ones.
+function sortByRecentUse_(lists, records) {
+  const out = Object.assign({}, lists);
+  Object.keys(LIST_USAGE).forEach(list => {
+    const lastUsed = {};
+    records.forEach((rec, row) => {
+      LIST_USAGE[list].forEach(col => {
+        const v = str_(rec[col]);
+        if (v) lastUsed[v] = row;
+      });
+    });
+    out[list] = (lists[list] || [])
+      .map((item, i) => ({ item, i, used: item in lastUsed ? lastUsed[item] : -1 }))
+      .sort((a, b) => b.used - a.used || a.i - b.i)
+      .map(x => x.item);
+  });
+  return out;
+}
+
+function str_(v) {
+  return v === undefined || v === null ? '' : String(v).trim();
+}
+
+// "YYYY-MM-DD" is read as a calendar day in the script's time zone (new Date() would read it as UTC midnight)
+function parseDate_(value) {
+  const s = str_(value);
+  if (!s) {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  }
+  const m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (m) {
+    const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+    return d.getMonth() === Number(m[2]) - 1 ? d : null; // rejects 2026-02-31
+  }
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? null : new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
+function readParams_(e) {
+  const params = Object.assign({}, (e && e.parameter) || {});
+  const body = e && e.postData;
+  if (body && body.contents && /json/i.test(body.type || '')) {
+    try {
+      Object.assign(params, JSON.parse(body.contents));
+    } catch (err) {
+      params.__badJson = true;
+    }
+  }
+  return params;
+}
+
+// ── validation (pure: no sheet access, so it can be tested on its own) ──────
+
+// Returns { row } with clean values, or { error }
+function validateEntry_(p, lists) {
+  const type = LEGACY_TYPES[str_(p.transactionType)] || str_(p.transactionType);
+  if (!TYPES.includes(type)) {
+    return { error: `Invalid transactionType "${str_(p.transactionType)}". Use one of: ${TYPES.join(', ')}` };
+  }
+
+  const description = str_(p.description);
+  if (!description) return { error: 'Missing required field: description' };
+
+  const amount = parseFloat(str_(p.amount).replace(/,/g, ''));
+  if (!isFinite(amount) || amount <= 0) return { error: 'Invalid amount: must be a positive number' };
+
+  const date = parseDate_(p.date);
+  if (!date) return { error: `Invalid date "${str_(p.date)}". Use YYYY-MM-DD` };
+
+  const category = str_(p.category);
+  const isOpening = category === OPENING_CATEGORY;
+  if (category && !isOpening && !lists.categories.includes(category)) {
+    return { error: `Unknown category "${category}". Add it to Dropdowns first` };
+  }
+  if (type === 'Debit' && !category) return { error: 'category is required for Debit' };
+
+  const isFriend = FRIEND_TYPES.includes(type);
+  const name = str_(p.name);
+  if (isFriend) {
+    if (!name) return { error: `name is required for ${type}` };
+    if (!lists.friends.includes(name)) return { error: `Unknown friend "${name}". Add them to Dropdowns first` };
+  }
+
+  // No account when no money moved: a friend's opening balance, a friend paying a shop for you (Owes), or Settled.
+  // Owed (you paid) always moves money out of one of your accounts.
+  const accountName = str_(p.accountName);
+  const accountOptional = (isOpening && isFriend) || type === 'Owes' || type === 'Settled';
+  if (!accountName && !accountOptional) return { error: 'Missing required field: accountName' };
+  if (accountName && !lists.accounts.includes(accountName)) {
+    return { error: `Unknown account "${accountName}". Add it to Dropdowns first` };
+  }
+
+  let toAccount = '';
+  if (type === 'Transfer') {
+    toAccount = str_(p.toAccount);
+    if (!toAccount) return { error: 'toAccount is required for Transfer' };
+    if (!lists.accounts.includes(toAccount)) return { error: `Unknown toAccount "${toAccount}"` };
+    if (toAccount === accountName) return { error: 'toAccount must be different from accountName' };
+  }
+
+  return {
+    row: {
+      date,
+      description,
+      name, // also kept on non-friend rows (e.g. a shop or person), but only checked for friend types
+      amount: Math.round(amount * 100) / 100,
+      transactionType: type,
+      category,
+      accountName,
+      toAccount,
+      id: str_(p.id),
+    },
+  };
+}
+
+// ── endpoints ────────────────────────────────────────────────────────────────
+
+function doGet(e) {
+  const params = (e && e.parameter) || {};
+  const isLists = params.action === 'lists';
+  const auth = authError_(params, isLists ? 'lists' : 'read');
+  if (auth) return json_({ error: auth });
+
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (isLists) {
+    const records = ss.getSheetByName(RECORDS_SHEET);
+    return json_(sortByRecentUse_(readLists_(ss), records ? sheetToObjects_(records) : []));
+  }
+
+  const output = {};
+  READ_SHEETS.forEach(name => {
+    const sheet = ss.getSheetByName(name);
+    if (sheet) output[name] = sheetToObjects_(sheet);
+  });
+  return json_(output);
+}
+
+function doPost(e) {
+  const lock = LockService.getScriptLock();
+  try {
+    const params = readParams_(e);
+    const auth = authError_(params, 'write');
+    if (auth) return fail_(auth);
+    if (params.__badJson) return fail_('Body is not valid JSON');
+
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName(RECORDS_SHEET);
+    if (!sheet) return fail_(`${RECORDS_SHEET} sheet not found`);
+
+    const checked = validateEntry_(params, readLists_(ss));
+    if (checked.error) return fail_(checked.error);
+    const entry = checked.row;
+
+    // One write at a time: two quick submissions must not land on the same row
+    if (!lock.tryLock(15000)) return fail_('Sheet is busy, try again');
+
+    // Make sure every expected header exists; add ID / Entered At at the end if missing
+    const lastCol = Math.max(sheet.getLastColumn(), 1);
+    const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+    const idx = headerIndex_(headers);
+    const missing = Object.keys(COLUMNS).filter(k => !(COLUMNS[k] in idx));
+    const notAuto = missing.filter(k => !AUTO_COLUMNS.includes(k));
+    if (notAuto.length) {
+      return fail_(`Records sheet is missing column(s): ${notAuto.map(k => COLUMNS[k]).join(', ')}`);
+    }
+    let width = headers.length;
+    missing.forEach(k => {
+      width += 1;
+      sheet.getRange(1, width).setValue(COLUMNS[k]);
+      idx[COLUMNS[k]] = width - 1;
+    });
+
+    const lastRow = sheet.getLastRow();
+
+    // Skip a repeat of an id we already saved (the Shortcut retried after a timeout)
+    if (entry.id && lastRow > 1) {
+      const idCol = idx[COLUMNS.id] + 1;
+      const ids = sheet.getRange(2, idCol, lastRow - 1, 1).getValues();
+      const pos = ids.findIndex(r => String(r[0]) === entry.id);
+      if (pos !== -1) return json_({ success: true, duplicate: true, row: pos + 2 });
+    }
+
+    const values = new Array(width).fill('');
+    const toWrite = Object.assign({}, entry, { enteredAt: new Date() });
+    Object.keys(COLUMNS).forEach(k => { values[idx[COLUMNS[k]]] = toWrite[k]; });
+
+    const newRow = lastRow + 1;
+    sheet.getRange(newRow, 1, 1, width).setValues([values]);
+    if (lastRow > 1) {
+      // Keep the dropdowns and number/date formats of the row above
+      sheet.getRange(lastRow, 1, 1, width).copyTo(
+        sheet.getRange(newRow, 1, 1, width), SpreadsheetApp.CopyPasteType.PASTE_DATA_VALIDATION, false);
+      sheet.getRange(lastRow, 1, 1, width).copyTo(
+        sheet.getRange(newRow, 1, 1, width), SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
+    }
+    SpreadsheetApp.flush();
+
+    return json_({ success: true, row: newRow });
+  } catch (err) {
+    return fail_(String(err));
+  } finally {
+    lock.releaseLock();
+  }
+}

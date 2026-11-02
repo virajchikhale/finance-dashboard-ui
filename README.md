@@ -1,45 +1,72 @@
 # Finance Dashboard
 
-A personal-finance dashboard (React) that reads your own Google Sheet through a small Google Apps Script web app. Overview KPIs and charts, transactions with filters, friends' owes / owed balances, instalments and a monthly budget bar. There is no backend server of its own: the browser talks directly to your Apps Script URL.
-
-## How it works
+A personal finance dashboard for a Google Sheet. Add entries from your iPhone with an Apple Shortcut, see where your money goes on any screen. No server, no database, no sign-up: the sheet is the database, a small Apps Script is the API, and the dashboard is a static page that talks only to Google.
 
 ```
-Google Sheet  ->  Apps Script web app (Code.gs, protected by an API key)  ->  this React app (static site)
- (Records, Instalments, Dropdowns)                        JSON over HTTPS            charts, filters, budget
+ iPhone Shortcut ──POST (WRITE_KEY)──┐
+                                     ▼
+                     Apps Script web app  ◄──►  Google Sheet
+                                     ▲        (Records, Dropdowns, Instalments)
+ Dashboard (browser) ──GET (READ_KEY)─┘
 ```
 
-## Setup
+**What it shows:** this month's spending, daily average and projection against a budget; net worth with credit card dues and friends' balances; spending by category, account and month; transfers between your own accounts; fixed commitments; what each friend owes. Works on phones, follows the system light/dark setting.
 
-1. **Sheet:** create tabs named `Records`, `Instalments` and `Dropdowns` with the column headers the app reads (see `src/hooks/useSheetData.js`).
-2. **Apps Script:** Extensions > Apps Script, paste `Code.gs`. Then **Project Settings > Script properties > Add `API_KEY`** with a long random value (`openssl rand -hex 24`). The key lives only in your script settings, never in this repo. Without it the endpoint refuses every request.
-3. **Deploy** the script as a Web app (Execute as *Me*, access *Anyone*). Your data is protected by the API key, not by the URL being secret.
-4. **Open the dashboard** and paste `https://script.google.com/macros/s/<id>/exec?key=<API_KEY>`. The URL is kept only in your browser's local storage and is sent only to Google.
+## Setup roadmap
 
-## Run
+About 20 minutes. Steps 1–3 are all you need; step 4 is optional.
+
+| Step | What you do | Time | Guide |
+|---|---|---|---|
+| 1. Sheet | Create a spreadsheet and import the three template tabs | 5 min | [docs/sheet.md](docs/sheet.md) |
+| 2. Apps Script | Paste two files, set `READ_KEY` and `WRITE_KEY`, deploy as a web app | 7 min | [docs/apps-script.md](docs/apps-script.md) |
+| 3. Dashboard | Run it (Docker, Node or any static host) and paste `<web app URL>?key=<READ_KEY>` | 5 min | [docs/dashboard.md](docs/dashboard.md) |
+| 4. Shortcut *(optional)* | Fill in your URL and `WRITE_KEY`, sign on a Mac, AirDrop to the iPhone | 5 min | [docs/shortcut.md](docs/shortcut.md) |
+
+The shortest path, if you have Docker:
 
 ```bash
-docker compose up -d --build       # http://localhost:8080 (bound to 127.0.0.1)
-# or for development
-npm ci && npm start
+# 1. sheets.new → File → Import → docs/templates/Records.csv, Dropdowns.csv, Instalments.csv
+# 2. Extensions → Apps Script → paste apps-script/Code.gs and apps-script/appsscript.json
+openssl rand -hex 24   # READ_KEY  → Project Settings → Script properties
+openssl rand -hex 24   # WRITE_KEY → Project Settings → Script properties
+#    Deploy → New deployment → Web app (Execute as: Me, Access: Anyone) → copy the URL
+# 3.
+docker compose up -d --build     # open http://localhost:8080, paste <URL>?key=<READ_KEY>
 ```
 
-Container: unprivileged nginx, read-only filesystem, all capabilities dropped, strict Content-Security-Policy (connects only to `script.google.com` / `script.googleusercontent.com`), health check.
+## Documentation
 
-## Tests
+| Guide | For |
+|---|---|
+| [Sheet](docs/sheet.md) | tabs, columns, dropdowns, starting balances |
+| [Apps Script](docs/apps-script.md) | installing, keys, deploying, updating |
+| [Dashboard](docs/dashboard.md) | running, hosting, connecting, settings, what each part means |
+| [Shortcut](docs/shortcut.md) | building, signing, installing, editing |
+| [Recording money](docs/usage.md) | which transaction type to use, categories, a simple routine |
+| [API reference](docs/api.md) | endpoints, fields, replies |
+| [Security](docs/security.md) | how data is protected, limits, what to do if a key leaks, checklist before going public |
+| [Troubleshooting](docs/troubleshooting.md) | common errors and fixes |
+
+## Repository
+
+```
+apps-script/   Code.gs (the API) and appsscript.json (manifest: this sheet only, web app settings)
+shortcut/      add-expense.plist (the Shortcut, key-less) and make_shortcut.py (fills in URL + key)
+docs/          the guides above and templates/ (CSV tabs to import)
+src/           the React dashboard (calculations in src/utils/insights.js)
+Dockerfile, docker-compose.yml, nginx.conf, security-headers.inc   container and page security headers
+```
+
+## Development
 
 ```bash
-npm test -- --watchAll=false
+npm ci
+npm start                          # dev server on http://localhost:3000
+npm test -- --watchAll=false       # dashboard calculations, rendering, and Code.gs against a fake sheet
+npm run build                      # static site in build/
 ```
 
-Covers the setup screen, URL validation (including look-alike hosts such as `evilscript.google.com`) and how API errors such as *Unauthorized* are surfaced.
+`src/sheetApi.test.js` runs `apps-script/Code.gs` against an in-memory sheet (keys, validation, duplicate IDs, lists), so the API is tested without Google.
 
-## Security notes
-
-- **Rotate the old key.** An earlier version of `Code.gs` shipped a hard-coded key (`mypf2025`) and had the check commented out. Anyone who had the deployment URL could read the sheet. Redeploy with the new `Code.gs` and a fresh `API_KEY`, and treat any data that was reachable before as exposed.
-- The API key is part of the URL you paste, so anyone who can read your browser profile can read your data; do not use shared computers.
-- `react-scripts` (Create React App) is a build-time tool only and has known advisories in its toolchain; the shipped bundle depends only on React, Recharts and web-vitals (`npm audit --omit=dev` is clean). Migrating to Vite would remove the toolchain findings.
-
-## Branches
-
-`feat/supa-support` (6 commits ahead of `main`) is an unmerged experiment that adds a Supabase-backed version with sign-in and a sensitive-value masking context. It is a different architecture from this branch; merge or retire it deliberately.
+The `feat/supa-support` branch is an unmerged experiment with a Supabase backend and sign-in; it is a different architecture from this one.
