@@ -1,167 +1,280 @@
 import React from 'react';
-import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
-import { PALETTE, CAT_COLORS, fmt, fmtFull } from '../../utils/helpers';
-import KpiCard from '../KpiCard';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { inr, inrSigned, inrShort } from '../../utils/helpers';
+import { monthLabel, formatDay, daysSince } from '../../utils/insights';
+import { useChartColors } from '../../theme';
 import ChartTip from '../ChartTip';
-import BudgetBar from '../BudgetBar';
+import Icon from '../Icon';
 
-const OverviewTab = ({ kpis, totalOwed, friendsSummary, monthlyData, accountData, categoryData, topTxns, currentBalances, monthlyBudget, recurringExpenses, spendingTrend, instalments }) => {
-  const numMonths = monthlyData.length || 1;
-  const totalBudget = monthlyBudget * numMonths;
+const STALE_DAYS = 7;
+const MIN_DAYS_FOR_PROJECTION = 7; // one large purchase early in the month makes the projection meaningless
+
+const Stat = ({ label, value, note, tone, children }) => (
+  <div className="card stat">
+    <span className="stat-label">{label}</span>
+    <span className={`stat-value${tone ? ` ${tone}` : ''}`}>{value}</span>
+    {children}
+    {note && <span className="stat-note">{note}</span>}
+  </div>
+);
+
+const Meter = ({ value, over }) => (
+  <div className={`meter${over ? ' over' : ''}`} role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(value * 100)}>
+    <span style={{ width: `${Math.min(100, Math.max(0, value * 100))}%` }} />
+  </div>
+);
+
+const Card = ({ title, sub, children, className = '' }) => (
+  <div className={`card ${className}`}>
+    <div className="card-head">
+      <h3 className="card-title">{title}</h3>
+      {sub && <span className="card-sub">{sub}</span>}
+    </div>
+    {children}
+  </div>
+);
+
+// Ranked horizontal bars in plain HTML: readable on a phone, no hover needed
+const RankedBars = ({ items, empty }) => {
+  if (!items.length) return <p className="muted small">{empty}</p>;
+  const max = Math.max(...items.map(i => i.value));
+  return (
+    <ul className="rows">
+      {items.map(i => (
+        <li key={i.name} className="row" style={{ display: 'block' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+            <span className="row-title">{i.name}</span>
+            <span className="row-value num">{inr(i.value)}</span>
+          </div>
+          <div className="meter" style={{ marginTop: 6 }}><span style={{ width: `${(i.value / max) * 100}%` }} /></div>
+        </li>
+      ))}
+    </ul>
+  );
+};
+
+const AccountRow = ({ account, today, credit }) => {
+  const idle = daysSince(account.lastDate, today);
+  const owed = credit && account.balance < 0;
+  return (
+    <li className="row">
+      <div className="row-main">
+        <div className="row-title">{account.name}</div>
+        <div className="row-sub">
+          {idle !== null && idle > STALE_DAYS
+            ? <span className="badge badge-warn">No entries for {idle} days</span>
+            : account.lastDate ? `Last entry ${formatDay(account.lastDate)}` : 'No entries yet'}
+        </div>
+      </div>
+      <div className={`row-value num${account.balance < 0 && !credit ? ' neg' : ''}`}>
+        {credit ? (owed ? `${inr(account.balance)} due` : account.balance > 0 ? `${inr(account.balance)} credit` : 'Nothing due') : inrSigned(account.balance).replace('+', '')}
+      </div>
+    </li>
+  );
+};
+
+const MonthlyChart = ({ data }) => {
+  const c = useChartColors();
+  return (
+    <>
+      <div className="legend" aria-hidden="true" style={{ marginBottom: 8 }}>
+        <span><i style={{ background: c.series1 }} />Income</span>
+        <span><i style={{ background: c.series2 }} />Spending</span>
+      </div>
+      <ResponsiveContainer width="100%" height={240}>
+        <BarChart data={data} barGap={2} barCategoryGap="28%" margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+          <CartesianGrid vertical={false} stroke={c.grid} />
+          <XAxis dataKey="label" tick={{ fill: c.axisText, fontSize: 12 }} axisLine={{ stroke: c.axis }} tickLine={false} />
+          <YAxis tickFormatter={inrShort} tick={{ fill: c.axisText, fontSize: 12 }} axisLine={false} tickLine={false} width={52} />
+          <Tooltip content={<ChartTip />} cursor={{ fill: c.grid, opacity: 0.5 }} />
+          <Bar dataKey="Income" fill={c.series1} radius={[4, 4, 0, 0]} maxBarSize={28} />
+          <Bar dataKey="Spending" fill={c.series2} radius={[4, 4, 0, 0]} maxBarSize={28} />
+        </BarChart>
+      </ResponsiveContainer>
+      <table className="sr-only">
+        <caption>Income and spending by month</caption>
+        <thead><tr><th>Month</th><th>Income</th><th>Spending</th></tr></thead>
+        <tbody>{data.map(d => <tr key={d.key}><td>{d.label}</td><td>{inr(d.Income)}</td><td>{inr(d.Spending)}</td></tr>)}</tbody>
+      </table>
+    </>
+  );
+};
+
+const OverviewTab = ({ today, month, worth, periodLabel, totals, monthly, categories, unclassified, byAccount, topSpending, transfers, instalments, recurring }) => {
+  const fixedMonthly = instalments.reduce((s, i) => s + i.monthly, 0);
 
   return (
     <>
-      <div className="grid-overview-top">
-        <KpiCard label="Total Income" value={fmtFull(kpis.income)} sub={`${kpis.txnCount} transactions`} color={PALETTE.green} icon="💹" />
-        <KpiCard label="Total Expenses" value={fmtFull(kpis.expense)} sub={
-          <BudgetBar spent={kpis.expense} budget={totalBudget} />
-        } color={PALETTE.red} icon="💸" />
-        <KpiCard label="Net Balance" value={fmtFull(kpis.net)} sub={kpis.net >= 0 ? 'Surplus ✓' : 'Deficit ✗'} color={kpis.net >= 0 ? PALETTE.green : PALETTE.red} icon="📊" />
-        <KpiCard label="Savings Rate" value={`${kpis.savingsRate}%`} sub={
-          spendingTrend ? (
-            <span style={{ color: spendingTrend.pctChange > 0 ? PALETTE.red : PALETTE.green, fontWeight: 700 }}>
-              {spendingTrend.pctChange > 0 ? '↑' : '↓'} {Math.abs(spendingTrend.pctChange)}% vs {spendingTrend.prevMonth}
-            </span>
-          ) : 'of income saved'
-        } color={PALETTE.accent} icon="🎯" />
-        <KpiCard 
-          label={totalOwed > 0 ? "Friends Owe You" : totalOwed < 0 ? "You Owe Friends" : "Friends Balanced"} 
-          value={fmtFull(Math.abs(totalOwed))} 
-          sub={`${friendsSummary.length} people`} 
-          color={totalOwed > 0 ? PALETTE.green : totalOwed < 0 ? PALETTE.red : PALETTE.muted} 
-          icon="🤝" 
-        />
-      </div>
-
-      <div className="grid-overview-mid">
-        <div style={{ background: PALETTE.card, border: `1px solid ${PALETTE.border}`, borderRadius: 12, padding: 20 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 16, color: PALETTE.white }}>📈 Monthly Income vs Expense</div>
-          <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={monthlyData} barCategoryGap="25%">
-              <CartesianGrid strokeDasharray="3 3" stroke={PALETTE.border} />
-              <XAxis dataKey="month" tick={{ fill: PALETTE.muted, fontSize: 11 }} axisLine={false} tickLine={false} />
-              <YAxis tickFormatter={fmt} tick={{ fill: PALETTE.muted, fontSize: 10 }} axisLine={false} tickLine={false} />
-              <Tooltip content={<ChartTip />} />
-              <Legend wrapperStyle={{ fontSize: 11, color: PALETTE.muted }} />
-              <Bar dataKey="Income" fill={PALETTE.green} radius={[4,4,0,0]} />
-              <Bar dataKey="Expense" fill={PALETTE.red} radius={[4,4,0,0]} />
-              <Bar dataKey="Net" fill={PALETTE.accent} radius={[4,4,0,0]} />
-            </BarChart>
-          </ResponsiveContainer>
+      {/* 1. This month at a glance (not affected by filters) */}
+      <section className="section">
+        <div className="section-head">
+          <h2 className="section-title">{monthLabel(month.key)}</h2>
+          <span className="card-sub">Day {month.day} of {month.daysInMonth}</span>
         </div>
-
-        <div style={{ background: PALETTE.card, border: `1px solid ${PALETTE.border}`, borderRadius: 12, padding: 20 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 16, color: PALETTE.white }}>🏦 Spending by Account</div>
-          <ResponsiveContainer width="100%" height={220}>
-            <PieChart>
-              <Pie data={accountData} cx="50%" cy="50%" innerRadius={50} outerRadius={85} dataKey="value" paddingAngle={3}>
-                {accountData.map((_, i) => <Cell key={i} fill={CAT_COLORS[i % CAT_COLORS.length]} />)}
-              </Pie>
-              <Tooltip formatter={(v) => fmtFull(v)} contentStyle={{ background: PALETTE.surface, border: `1px solid ${PALETTE.border}`, fontSize: 12 }} />
-              <Legend formatter={(v) => <span style={{ fontSize: 10, color: PALETTE.muted }}>{v}</span>} />
-            </PieChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-
-      <div className="grid-overview-bot">
-        <div style={{ background: PALETTE.card, border: `1px solid ${PALETTE.border}`, borderRadius: 12, padding: 20 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 16, color: PALETTE.white }}>🏷 Top Spending Categories</div>
-          <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={categoryData} layout="vertical" barCategoryGap="20%">
-              <CartesianGrid strokeDasharray="3 3" stroke={PALETTE.border} horizontal={false} />
-              <XAxis type="number" tickFormatter={fmt} tick={{ fill: PALETTE.muted, fontSize: 10 }} axisLine={false} tickLine={false} />
-              <YAxis dataKey="name" type="category" tick={{ fill: PALETTE.muted, fontSize: 10 }} axisLine={false} tickLine={false} width={90} />
-              <Tooltip content={<ChartTip />} />
-              <Bar dataKey="value" radius={[0,4,4,0]}>
-                {categoryData.map((_, i) => <Cell key={i} fill={CAT_COLORS[i % CAT_COLORS.length]} />)}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-
-        <div style={{ background: PALETTE.card, border: `1px solid ${PALETTE.border}`, borderRadius: 12, padding: 20 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 14, color: PALETTE.white }}>🔥 Top Expenses</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {topTxns.map((t, i) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div style={{ width: 22, height: 22, borderRadius: 6, background: `${CAT_COLORS[i % CAT_COLORS.length]}22`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: CAT_COLORS[i % CAT_COLORS.length], fontWeight: 800, flexShrink: 0 }}>{i+1}</div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 12, color: PALETTE.text, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.Description}</div>
-                  <div style={{ fontSize: 10, color: PALETTE.muted }}>{t.Month} • {t['Account Name']} {t.Category ? `• ${t.Category.split(' ').slice(0,2).join(' ')}` : ''}</div>
-                </div>
-                <div style={{ fontSize: 13, fontWeight: 800, color: PALETTE.red, fontFamily: 'monospace', flexShrink: 0 }}>{fmtFull(t.Amount)}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {/* Current Balances */}
-          <div style={{ background: PALETTE.card, border: `1px solid ${PALETTE.border}`, borderRadius: 12, padding: 20 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 14, color: PALETTE.white }}>💳 Current Balances</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {currentBalances.length > 0 ? currentBalances.map((b, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 10, borderBottom: `1px solid ${PALETTE.border}` }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <div style={{ width: 32, height: 32, borderRadius: 8, background: `${PALETTE.accentAlt}22`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14 }}>🏦</div>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: PALETTE.text }}>{b.name}</div>
-                  </div>
-                  <div style={{ fontSize: 15, fontWeight: 800, color: b.balance >= 0 ? PALETTE.green : PALETTE.red, fontFamily: 'monospace' }}>
-                    {fmtFull(b.balance)}
-                  </div>
-                </div>
-              )) : (
-                <div style={{ fontSize: 12, color: PALETTE.muted, textAlign: 'center', marginTop: 20 }}>No balance data available</div>
-              )}
-            </div>
-          </div>
-
-          {/* Instalments */}
-          {instalments && instalments.length > 0 && (
-            <div style={{ background: PALETTE.card, border: `1px solid ${PALETTE.border}`, borderRadius: 12, padding: 20 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6, color: PALETTE.white }}>📅 Fixed Instalments</div>
-              <div style={{ fontSize: 10, color: PALETTE.muted, marginBottom: 12 }}>Annual fixed obligations — insurance, LIC, subscriptions</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {instalments.map((inst, i) => (
-                  <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0', borderBottom: `1px solid ${PALETTE.border}22` }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: PALETTE.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{inst.category}</div>
-                      <div style={{ fontSize: 10, color: PALETTE.muted }}>₹{inst.monthly.toFixed(0)}/mo • ₹{inst.daily.toFixed(1)}/day</div>
-                    </div>
-                    <div style={{ fontSize: 13, fontWeight: 800, color: PALETTE.accentAlt, fontFamily: 'monospace', flexShrink: 0 }}>{fmtFull(inst.annually)}/yr</div>
-                  </div>
-                ))}
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, paddingTop: 8, borderTop: `1px solid ${PALETTE.border}` }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: PALETTE.muted }}>Total Annual</span>
-                  <span style={{ fontSize: 13, fontWeight: 900, color: PALETTE.yellow, fontFamily: 'monospace' }}>
-                    {fmtFull(instalments.reduce((s, i) => s + i.annually, 0))}/yr
-                  </span>
-                </div>
-              </div>
-            </div>
+        <div className="grid grid-4">
+          <Stat label="Spent so far" value={inr(month.spent)} note={`${month.count} expenses`} />
+          <Stat label="Average per day" value={inr(month.dailyAvg)} note="Spending ÷ days so far" />
+          {month.day < MIN_DAYS_FOR_PROJECTION ? (
+            <Stat label="Projected for the month" value="—" note={`Shown from day ${MIN_DAYS_FOR_PROJECTION}, when the daily average settles`} />
+          ) : (
+            <Stat label="Projected for the month" value={inr(month.projected)}
+              note={month.budget > 0 ? (month.projectedOver ? `${inr(month.projected - month.budget)} over budget at this pace` : 'Within budget at this pace') : 'At the current daily average'}
+              tone={month.projectedOver ? 'neg' : ''} />
           )}
-
-          {/* Recurring Expenses */}
-          {recurringExpenses && recurringExpenses.length > 0 && (
-            <div style={{ background: PALETTE.card, border: `1px solid ${PALETTE.border}`, borderRadius: 12, padding: 20 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 14, color: PALETTE.white }}>🔄 Recurring Expenses</div>
-              <div style={{ fontSize: 10, color: PALETTE.muted, marginBottom: 12 }}>Expenses appearing in 2+ months — likely subscriptions or fixed costs</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {recurringExpenses.map((r, i) => (
-                  <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0', borderBottom: `1px solid ${PALETTE.border}22` }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: PALETTE.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.description}</div>
-                      <div style={{ fontSize: 10, color: PALETTE.muted }}>{r.monthCount} months{r.category ? ` • ${r.category.split(' ').slice(0,2).join(' ')}` : ''}</div>
-                    </div>
-                    <div style={{ fontSize: 13, fontWeight: 800, color: PALETTE.yellow, fontFamily: 'monospace', flexShrink: 0 }}>{fmtFull(r.total)}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
+          {month.budget > 0 ? (
+            <Stat label="Budget left" value={month.budgetLeft < 0 ? `−${inr(month.budgetLeft)}` : inr(month.budgetLeft)}
+              note={`${Math.round(month.budgetUsed * 100)}% of ${inr(month.budget)} used`} tone={month.budgetLeft < 0 ? 'neg' : ''}>
+              <Meter value={month.budgetUsed} over={month.budgetLeft < 0} />
+            </Stat>
+          ) : (
+            <Stat label="Budget left" value="—" note="Set a monthly budget in Settings" />
           )}
         </div>
-      </div>
+        {fixedMonthly > 0 && (
+          <p className="small muted" style={{ margin: '10px 2px 0' }}>
+            Plus <strong className="num" style={{ color: 'var(--text)' }}>{inr(fixedMonthly)}</strong> a month in fixed commitments (insurance, LIC, subscriptions), listed under Fixed commitments below.
+          </p>
+        )}
+      </section>
+
+      {/* 2. Net worth: what you hold, minus what you owe, plus friends' balance */}
+      <section className="section">
+        <div className="grid grid-wide align-start">
+          <div className="card">
+            <div className="card-head">
+              <h3 className="card-title">Net worth</h3>
+              <span className="card-sub">All entries, ignores filters</span>
+            </div>
+            <div className={`hero-value num${worth.total < 0 ? ' neg' : ''}`}>{worth.total < 0 ? `−${inr(worth.total)}` : inr(worth.total)}</div>
+            <ul className="rows" style={{ marginTop: 14 }}>
+              <li className="row"><span className="row-main">Bank and cash</span><span className="row-value num">{inr(worth.cash)}</span></li>
+              <li className="row"><span className="row-main">Card and pay-later dues</span><span className="row-value num neg">{worth.dues > 0 ? `−${inr(worth.dues)}` : inr(0)}</span></li>
+              <li className="row">
+                <span className="row-main">Friends {worth.friendsNet > 0 ? '(owe you)' : worth.friendsNet < 0 ? '(you owe)' : ''}</span>
+                <span className={`row-value num${worth.friendsNet < 0 ? ' neg' : ''}`}>{inrSigned(worth.friendsNet)}</span>
+              </li>
+            </ul>
+          </div>
+          <div className="card">
+            <div className="card-head"><h3 className="card-title">Accounts</h3></div>
+            <div className="group-label" style={{ marginTop: 0 }}>Bank and cash</div>
+            <ul className="rows">{worth.bank.map(a => <AccountRow key={a.name} account={a} today={today} />)}</ul>
+            {worth.credit.length > 0 && <>
+              <div className="group-label">Credit cards and pay later</div>
+              <ul className="rows">{worth.credit.map(a => <AccountRow key={a.name} account={a} today={today} credit />)}</ul>
+            </>}
+          </div>
+        </div>
+      </section>
+
+      {/* 3. The filtered period */}
+      <section className="section">
+        <div className="section-head">
+          <h2 className="section-title">{periodLabel}</h2>
+          <span className="card-sub">Follows the filters · opening balances and transfers excluded</span>
+        </div>
+        <div className="grid grid-4">
+          <Stat label="Income" value={inr(totals.income)} />
+          <Stat label="Spending" value={inr(totals.spending)} />
+          <Stat label="Net" value={inrSigned(totals.net)} tone={totals.net < 0 ? 'neg' : ''} />
+          <Stat label="Savings rate"
+            value={totals.savingsRate === null || totals.savingsRate < -100 ? '—' : `${Math.round(totals.savingsRate)}%`}
+            note={totals.savingsRate === null ? 'No income in this period'
+              : totals.savingsRate < -100 ? `Spending is ${(totals.spending / totals.income).toFixed(0)}× income` : 'Net ÷ income'} />
+        </div>
+
+        <div className="grid grid-wide" style={{ marginTop: 14 }}>
+          <Card title="Income and spending by month">
+            {monthly.length ? <MonthlyChart data={monthly} /> : <p className="muted small">No months selected.</p>}
+          </Card>
+          <Card title="Spending by category">
+            {unclassified.share > 0.2 && (
+              <div className="notice" style={{ marginBottom: 12 }}>
+                <Icon name="alert" />
+                <span>{Math.round(unclassified.share * 100)}% of spending ({inr(unclassified.amount)}, {unclassified.count} entries) is under “Other” or has no category. Specific categories make this chart more useful.</span>
+              </div>
+            )}
+            <RankedBars items={categories} empty="No spending in this period." />
+          </Card>
+        </div>
+
+        <div className="grid grid-3" style={{ marginTop: 14 }}>
+          <Card title="Largest expenses">
+            {topSpending.length ? (
+              <ul className="rows">
+                {topSpending.map((t, i) => (
+                  <li key={i} className="row">
+                    <div className="row-main">
+                      <div className="row-title">{t.Description}</div>
+                      <div className="row-sub">{[formatDay(t.DateISO), t['Account Name'], t.Category].filter(Boolean).join(' · ')}</div>
+                    </div>
+                    <span className="row-value num">{inr(t.Amount)}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : <p className="muted small">No spending in this period.</p>}
+          </Card>
+          <Card title="Spending by account">
+            <RankedBars items={byAccount} empty="No spending in this period." />
+          </Card>
+          <Card title="Moved between accounts" sub={transfers.count ? `${transfers.count} transfers` : ''}>
+            {transfers.count ? (
+              <>
+                <div className="stat-value num" style={{ marginBottom: 10 }}>{inr(transfers.total)}</div>
+                <ul className="rows">
+                  {transfers.routes.map(r => (
+                    <li key={`${r.from}-${r.to}`} className="row">
+                      <div className="row-main">
+                        <div className="row-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>{r.from}<Icon name="arrow" className="icon muted" />{r.to}</div>
+                        <div className="row-sub">{r.count} {r.count === 1 ? 'transfer' : 'transfers'}</div>
+                      </div>
+                      <span className="row-value num">{inr(r.amount)}</span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="hint" style={{ margin: '10px 0 0' }}>Not counted as income or spending.</p>
+              </>
+            ) : <p className="muted small">No transfers in this period.</p>}
+          </Card>
+        </div>
+
+        <div className="grid grid-2" style={{ marginTop: 14 }}>
+          {instalments.length > 0 && (
+            <Card title="Fixed commitments" sub={`${inr(fixedMonthly)} / month`}>
+              <ul className="rows">
+                {instalments.map((x, i) => (
+                  <li key={i} className="row">
+                    <div className="row-main">
+                      <div className="row-title">{x.category}</div>
+                      <div className="row-sub">{inr(x.annually)} a year</div>
+                    </div>
+                    <span className="row-value num">{inr(x.monthly)}<span className="muted small"> /mo</span></span>
+                  </li>
+                ))}
+                <li className="row row-total">
+                  <span className="row-main">Total</span>
+                  <span className="row-value num">{inr(instalments.reduce((s, x) => s + x.annually, 0))}<span className="muted small"> /yr</span></span>
+                </li>
+              </ul>
+            </Card>
+          )}
+          {recurring.length > 0 && (
+            <Card title="Repeating expenses" sub="Same description in 2+ months">
+              <ul className="rows">
+                {recurring.map(r => (
+                  <li key={r.description} className="row">
+                    <div className="row-main">
+                      <div className="row-title">{r.description}</div>
+                      <div className="row-sub">{r.monthCount} months</div>
+                    </div>
+                    <span className="row-value num">{inr(r.total)}</span>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
+        </div>
+      </section>
     </>
   );
 };

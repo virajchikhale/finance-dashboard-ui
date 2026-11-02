@@ -1,155 +1,86 @@
 import React from 'react';
-import { PALETTE, TX_TYPES as ALL_TYPES } from '../../utils/helpers';
+import { TX_TYPES } from '../../utils/helpers';
+import { monthLabel, formatDay } from '../../utils/insights';
 import MultiSelect from '../MultiSelect';
-
-const TYPE_COLORS = {
-  Credit: PALETTE.green,
-  Debit: PALETTE.red,
-  Transfer: PALETTE.yellow,
-  Owes: PALETTE.accent,
-  Owed: PALETTE.accentAlt,
-  Settled: PALETTE.muted,
-};
+import Icon from '../Icon';
 
 const PRESETS = [
-  { key: 'thisMonth', label: '📅 This Month' },
-  { key: 'last3', label: '📊 Last 3 Months' },
-  { key: 'last6', label: '📈 Last 6 Months' },
-  { key: 'thisYear', label: '🗓 This Year' },
-  { key: 'all', label: '🌐 All Time' },
+  { key: 'thisMonth', label: 'This month' },
+  { key: 'last3', label: '3 months' },
+  { key: 'last6', label: '6 months' },
+  { key: 'thisYear', label: 'This year' },
+  { key: 'all', label: 'All time' },
 ];
 
+const Chip = ({ children, onRemove }) => (
+  <span className="chip">{children}
+    <button type="button" onClick={onRemove} aria-label={`Remove ${children}`}><Icon name="close" className="icon" /></button>
+  </span>
+);
+
 const FilterPanel = ({
-  allMonths, selMonths, setSelMonths,
-  selTypes, setSelTypes,
-  allBanks, selAccounts, setSelAccounts,
-  allCategories, selCategories, setSelCategories,
-  dateFrom, setDateFrom, dateTo, setDateTo,
-  search, setSearch, filteredCount,
-  activePreset, onPresetChange, onResetAll
+  open, allMonths, selMonths, setSelMonths, selTypes, setSelTypes,
+  allBanks, selAccounts, setSelAccounts, allCategories, selCategories, setSelCategories,
+  dateFrom, setDateFrom, dateTo, setDateTo, search, setSearch, filteredCount,
+  activePreset, onPresetChange, onResetAll,
 }) => {
-  const hasActiveFilters = search || dateFrom || dateTo ||
-    selMonths.length < allMonths.length ||
-    selTypes.length < ALL_TYPES.length ||
-    selAccounts.length < allBanks.length ||
-    selCategories.length < allCategories.length;
+  const partial = (sel, all) => sel.length < all.length;
+  const hasActive = search || dateFrom || dateTo || partial(selMonths, allMonths) || partial(selTypes, TX_TYPES)
+    || partial(selAccounts, allBanks) || partial(selCategories, allCategories);
 
   return (
-    <div style={{ background: PALETTE.surface, border: `1px solid ${PALETTE.border}`, borderRadius: 12, padding: '16px 20px', marginBottom: 20 }}>
-      
-      {/* Quick Presets */}
-      <div className="filter-presets">
-        {PRESETS.map(p => (
-          <button
-            key={p.key}
-            className={`preset-btn${activePreset === p.key ? ' active' : ''}`}
-            onClick={() => onPresetChange(p.key)}
-          >
-            {p.label}
-          </button>
-        ))}
+    <section className="filters" aria-label="Filters">
+      <div className="filter-bar">
+        <div className="segmented" role="group" aria-label="Period">
+          {PRESETS.map(p => (
+            <button key={p.key} type="button" aria-pressed={activePreset === p.key} onClick={() => onPresetChange(p.key)}>{p.label}</button>
+          ))}
+        </div>
+        {hasActive && <button type="button" className="btn btn-ghost" onClick={onResetAll}>Reset filters</button>}
+        <span className="filter-count"><span className="num">{filteredCount}</span> transactions</span>
       </div>
 
-      {/* Filter Dropdowns + Dates + Search */}
-      <div className="grid-filters">
-        <MultiSelect label="Month" options={allMonths} selected={selMonths} onChange={v => { setSelMonths(v); onPresetChange(null); }} color={PALETTE.accent} />
-        
-        <MultiSelect
-          label="Type" options={ALL_TYPES} selected={selTypes} onChange={setSelTypes} color={PALETTE.green}
-          renderLabel={opt => {
-            const c = TYPE_COLORS[opt] || PALETTE.muted;
-            return <span style={{ color: c, fontWeight: 600 }}>{opt}</span>;
-          }}
-        />
-
-        <MultiSelect label="Bank Account" options={allBanks} selected={selAccounts} onChange={setSelAccounts} color={PALETTE.accentAlt} />
-        <MultiSelect label="Category" options={allCategories} selected={selCategories} onChange={setSelCategories} color={PALETTE.yellow} renderLabel={opt => opt || '(Uncategorized)'} />
-
-        <div>
-          <div style={{ fontSize: 10, color: PALETTE.muted, fontWeight: 700, letterSpacing: 1, marginBottom: 5, textTransform: 'uppercase' }}>From Date</div>
-          <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
-            style={{
-              width: '100%', padding: '7px 10px', borderRadius: 8, cursor: 'pointer',
-              background: PALETTE.card, border: `1px solid ${dateFrom ? PALETTE.accent : PALETTE.border}`,
-              color: dateFrom ? PALETTE.text : PALETTE.muted, fontSize: 12, outline: 'none', colorScheme: 'dark', boxSizing: 'border-box'
-            }}
-          />
-        </div>
-
-        <div>
-          <div style={{ fontSize: 10, color: PALETTE.muted, fontWeight: 700, letterSpacing: 1, marginBottom: 5, textTransform: 'uppercase' }}>To Date</div>
-          <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
-            style={{
-              width: '100%', padding: '7px 10px', borderRadius: 8, cursor: 'pointer',
-              background: PALETTE.card, border: `1px solid ${dateTo ? PALETTE.accent : PALETTE.border}`,
-              color: dateTo ? PALETTE.text : PALETTE.muted, fontSize: 12, outline: 'none', colorScheme: 'dark', boxSizing: 'border-box'
-            }}
-          />
-        </div>
-
-        <div>
-          <div style={{ fontSize: 10, color: PALETTE.muted, fontWeight: 700, letterSpacing: 1, marginBottom: 5, textTransform: 'uppercase' }}>Search</div>
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍  description, name…"
-            style={{ width: '100%', background: PALETTE.card, border: `1px solid ${search ? PALETTE.accent : PALETTE.border}`, borderRadius: 8, padding: '7px 10px', color: PALETTE.text, fontSize: 12, outline: 'none', boxSizing: 'border-box' }} />
-        </div>
-      </div>
-
-      {/* Actions Row: Chips + Reset + Count */}
-      <div className="filter-actions">
-        <div className="filter-chips">
-          {selMonths.length < allMonths.length && selMonths.length <= 3 && selMonths.map(m => (
-            <span key={m} className="filter-chip" style={{ background: `${PALETTE.accent}15`, color: PALETTE.accent, borderColor: `${PALETTE.accent}44` }}>
-              {m}
-              <span style={{ cursor: 'pointer', opacity: 0.7, marginLeft: 2 }} onClick={() => setSelMonths(selMonths.filter(x => x !== m))}>✕</span>
-            </span>
-          ))}
-          {selTypes.length < ALL_TYPES.length && selTypes.map(t => {
-            const c = TYPE_COLORS[t] || PALETTE.muted;
-            return (
-              <span key={t} className="filter-chip" style={{ background: `${c}15`, color: c, borderColor: `${c}44` }}>
-                {t}
-                <span style={{ cursor: 'pointer', opacity: 0.7, marginLeft: 2 }} onClick={() => setSelTypes(selTypes.filter(x => x !== t))}>✕</span>
-              </span>
-            );
-          })}
-          {selAccounts.length < allBanks.length && selAccounts.length <= 3 && selAccounts.map(a => (
-            <span key={a} className="filter-chip" style={{ background: `${PALETTE.accentAlt}15`, color: PALETTE.accentAlt, borderColor: `${PALETTE.accentAlt}44` }}>
-              {a}
-              <span style={{ cursor: 'pointer', opacity: 0.7, marginLeft: 2 }} onClick={() => setSelAccounts(selAccounts.filter(x => x !== a))}>✕</span>
-            </span>
-          ))}
-          {dateFrom && (
-            <span className="filter-chip" style={{ background: `${PALETTE.accent}15`, color: PALETTE.accent, borderColor: `${PALETTE.accent}44` }}>
-              From: {dateFrom}
-              <span style={{ cursor: 'pointer', opacity: 0.7, marginLeft: 2 }} onClick={() => setDateFrom('')}>✕</span>
-            </span>
-          )}
-          {dateTo && (
-            <span className="filter-chip" style={{ background: `${PALETTE.accent}15`, color: PALETTE.accent, borderColor: `${PALETTE.accent}44` }}>
-              To: {dateTo}
-              <span style={{ cursor: 'pointer', opacity: 0.7, marginLeft: 2 }} onClick={() => setDateTo('')}>✕</span>
-            </span>
-          )}
-          {search && (
-            <span className="filter-chip" style={{ background: `${PALETTE.accent}15`, color: PALETTE.accent, borderColor: `${PALETTE.accent}44` }}>
-              "{search}"
-              <span style={{ cursor: 'pointer', opacity: 0.7, marginLeft: 2 }} onClick={() => setSearch('')}>✕</span>
-            </span>
-          )}
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
-          {hasActiveFilters && (
-            <button className="reset-all-btn" onClick={onResetAll}>
-              ✕ Reset All
-            </button>
-          )}
-          <div style={{ fontSize: 11, color: PALETTE.muted }}>
-            <span style={{ color: PALETTE.accent, fontWeight: 700 }}>{filteredCount}</span> transactions
+      {open && (
+        <>
+          <div className="filter-grid">
+            <MultiSelect label="Month" options={allMonths} selected={selMonths} renderLabel={monthLabel}
+              onChange={v => { setSelMonths(v); onPresetChange(null); }} />
+            <MultiSelect label="Type" options={TX_TYPES} selected={selTypes} onChange={setSelTypes} />
+            <MultiSelect label="Account" options={allBanks} selected={selAccounts} onChange={setSelAccounts} />
+            <MultiSelect label="Category" options={allCategories} selected={selCategories} onChange={setSelCategories} />
+            <label className="field">
+              <span className="field-label">From</span>
+              <input className="input" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+            </label>
+            <label className="field">
+              <span className="field-label">To</span>
+              <input className="input" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
+            </label>
+            <label className="field span-all">
+              <span className="field-label">Search</span>
+              <input className="input" type="search" value={search} onChange={e => setSearch(e.target.value)} placeholder="Description, name or category" />
+            </label>
           </div>
-        </div>
-      </div>
-    </div>
+
+          {hasActive && (
+            <div className="chips">
+              {partial(selMonths, allMonths) && selMonths.length <= 3 && selMonths.map(m => (
+                <Chip key={m} onRemove={() => setSelMonths(selMonths.filter(x => x !== m))}>{monthLabel(m)}</Chip>
+              ))}
+              {partial(selTypes, TX_TYPES) && selTypes.map(t => (
+                <Chip key={t} onRemove={() => setSelTypes(selTypes.filter(x => x !== t))}>{t}</Chip>
+              ))}
+              {partial(selAccounts, allBanks) && selAccounts.length <= 3 && selAccounts.map(a => (
+                <Chip key={a} onRemove={() => setSelAccounts(selAccounts.filter(x => x !== a))}>{a}</Chip>
+              ))}
+              {dateFrom && <Chip onRemove={() => setDateFrom('')}>{`From ${formatDay(dateFrom)}`}</Chip>}
+              {dateTo && <Chip onRemove={() => setDateTo('')}>{`To ${formatDay(dateTo)}`}</Chip>}
+              {search && <Chip onRemove={() => setSearch('')}>{`“${search}”`}</Chip>}
+            </div>
+          )}
+        </>
+      )}
+    </section>
   );
 };
 

@@ -1,333 +1,186 @@
-import { useState, useMemo, useEffect } from "react";
-import { PALETTE, MONTH_NAMES, obfuscate, deobfuscate, isValidScriptUrl, TX_TYPES as ALL_TYPES, FRIEND_TYPES, isOpeningBalance } from "./utils/helpers";
-import { useSheetData } from "./hooks/useSheetData";
+import { useState, useMemo, useEffect, useCallback } from 'react';
+import { obfuscate, deobfuscate, isValidScriptUrl, TX_TYPES } from './utils/helpers';
+import {
+  monthLabel, presetMonths, periodTotals, monthlySeries, categoryBreakdown, unclassifiedShare,
+  spendingByAccount, transferSummary, recurringSpending, thisMonth, accountBalances, friendBalances,
+  netWorth, looksLikeCredit, isSpending,
+} from './utils/insights';
+import { useSheetData } from './hooks/useSheetData';
 
-import Header from "./components/layout/Header";
-import FilterPanel from "./components/layout/FilterPanel";
-import SetupUrl from "./components/SetupUrl";
-import SettingsModal from "./components/SettingsModal";
-import OverviewTab from "./components/tabs/OverviewTab";
-import TransactionsTab from "./components/tabs/TransactionsTab";
-import FriendsTab from "./components/tabs/FriendsTab";
+import Header from './components/layout/Header';
+import FilterPanel from './components/layout/FilterPanel';
+import SetupUrl from './components/SetupUrl';
+import SettingsModal from './components/SettingsModal';
+import OverviewTab from './components/tabs/OverviewTab';
+import TransactionsTab from './components/tabs/TransactionsTab';
+import FriendsTab from './components/tabs/FriendsTab';
 
+const PRESET_LABELS = { thisMonth: 'This month', last3: 'Last 3 months', last6: 'Last 6 months', thisYear: 'This year', all: 'All time' };
+
+// localStorage can throw (private mode, blocked storage); the app must still work
+const store = {
+  get: (k) => { try { return localStorage.getItem(k); } catch { return null; } },
+  set: (k, v) => { try { localStorage.setItem(k, v); } catch { /* not persisted */ } },
+  remove: (k) => { try { localStorage.removeItem(k); } catch { /* ignore */ } },
+};
+const isWide = () => typeof window === 'undefined' || !window.matchMedia || window.matchMedia('(min-width: 641px)').matches;
 
 export default function App() {
   const [sheetUrl, setSheetUrl] = useState(() => {
-    const stored = localStorage.getItem("sheetUrl");
+    const stored = store.get('sheetUrl');
     if (!stored) return '';
     const decoded = deobfuscate(stored);
     return isValidScriptUrl(decoded) ? decoded : stored; // fallback for migration
   });
   const { rawRecords, rawInstalments, loading, error, lastUpdated, fetchData } = useSheetData();
 
-  useEffect(() => {
-    if (sheetUrl) fetchData(sheetUrl);
-  }, [sheetUrl, fetchData]);
+  useEffect(() => { if (sheetUrl) fetchData(sheetUrl); }, [sheetUrl, fetchData]);
 
-  const handleSaveUrl = (url) => {
-    localStorage.setItem("sheetUrl", obfuscate(url));
-    setSheetUrl(url);
-  };
+  // ── settings ────────────────────────────────────────────────────────────────
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [monthlyBudget, setMonthlyBudget] = useState(() => {
+    const v = parseFloat(store.get('monthlyBudget'));
+    return Number.isFinite(v) ? v : 50000;
+  });
+  const [creditSetting, setCreditSetting] = useState(() => {
+    try { const v = JSON.parse(store.get('creditAccounts')); return Array.isArray(v) ? v : null; } catch { return null; }
+  });
 
-  const handleChangeUrl = () => {
-    localStorage.removeItem("sheetUrl");
-    localStorage.removeItem("monthlyBudget");
-    setSheetUrl("");
-  };
+  const handleSaveUrl = (url) => { store.set('sheetUrl', obfuscate(url)); setSheetUrl(url); };
+  const handleDisconnect = () => { store.remove('sheetUrl'); setSettingsOpen(false); setSheetUrl(''); };
+  const handleSaveBudget = (v) => { setMonthlyBudget(v); store.set('monthlyBudget', String(v)); };
+  const handleSaveCredit = (list) => { setCreditSetting(list); store.set('creditAccounts', JSON.stringify(list)); };
 
-  // ── FILTER OPTIONS ──────────────────────────────────────────────────────────
-  const allMonths = useMemo(() => {
-    const order = { Jan:1,Feb:2,Mar:3,Apr:4,May:5,Jun:6,Jul:7,Aug:8,Sep:9,Oct:10,Nov:11,Dec:12 };
-    const s = [...new Set(rawRecords.map(r => r.Month).filter(Boolean))];
-    return s.sort((a,b) => (order[a]||99) - (order[b]||99));
-  }, [rawRecords]);
+  // ── filter options ──────────────────────────────────────────────────────────
+  const allMonths = useMemo(() => [...new Set(rawRecords.map(r => r.MonthKey).filter(Boolean))].sort(), [rawRecords]);
+  const allBanks = useMemo(() => [...new Set(rawRecords.flatMap(r => [r['Account Name'], r['To Account']]).filter(Boolean))].sort(), [rawRecords]);
+  const allCategories = useMemo(() => [...new Set(rawRecords.map(r => r.Category))].sort(), [rawRecords]);
+  const creditAccounts = useMemo(() => creditSetting ?? allBanks.filter(looksLikeCredit), [creditSetting, allBanks]);
 
-  const allBanks = useMemo(() => [...new Set(rawRecords.map(r => r['Account Name']).filter(Boolean))].sort(), [rawRecords]);
-  const allCategories = useMemo(() => [...new Set(rawRecords.map(r => r.Category))], [rawRecords]);
-
-  // ── STATE ────────────────────────────────────────────────────────────────────
+  // ── filter state ────────────────────────────────────────────────────────────
+  const [activeTab, setActiveTab] = useState('overview');
+  const [filtersOpen, setFiltersOpen] = useState(isWide);
+  const [activePreset, setActivePreset] = useState('all');
   const [selMonths, setSelMonths] = useState([]);
-  const [selTypes, setSelTypes] = useState([...ALL_TYPES]);
+  const [selTypes, setSelTypes] = useState([...TX_TYPES]);
   const [selAccounts, setSelAccounts] = useState([]);
   const [selCategories, setSelCategories] = useState([]);
   const [search, setSearch] = useState('');
-  const [activeTab, setActiveTab] = useState('overview');
-  const [filtersOpen, setFiltersOpen] = useState(true);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
-  const [activePreset, setActivePreset] = useState('all');
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [monthlyBudget, setMonthlyBudget] = useState(() => {
-    const stored = localStorage.getItem('monthlyBudget');
-    return stored ? parseFloat(stored) : 50000;
-  });
 
-  const handleSaveBudget = (val) => {
-    setMonthlyBudget(val);
-    localStorage.setItem('monthlyBudget', String(val));
-  };
+  useEffect(() => { setSelMonths([...allMonths]); }, [allMonths]);
+  useEffect(() => { setSelAccounts([...allBanks]); }, [allBanks]);
+  useEffect(() => { setSelCategories([...allCategories]); }, [allCategories]);
 
-  useEffect(() => { if (allMonths.length) setSelMonths([...allMonths]); }, [allMonths]);
-  useEffect(() => { if (allBanks.length) setSelAccounts([...allBanks]); }, [allBanks]);
-  useEffect(() => { if (allCategories.length) setSelCategories([...allCategories]); }, [allCategories]);
+  const resetAll = useCallback(() => {
+    setSelMonths([...allMonths]); setSelTypes([...TX_TYPES]); setSelAccounts([...allBanks]);
+    setSelCategories([...allCategories]); setSearch(''); setDateFrom(''); setDateTo(''); setActivePreset('all');
+  }, [allMonths, allBanks, allCategories]);
 
-  // ── PRESET / RESET ──────────────────────────────────────────────────────────
   const applyPreset = (preset) => {
-    if (preset === activePreset) return;
     setActivePreset(preset);
-    setSearch('');
-    setDateFrom('');
-    setDateTo('');
-    setSelTypes([...ALL_TYPES]);
-    if (allBanks.length) setSelAccounts([...allBanks]);
-    if (allCategories.length) setSelCategories([...allCategories]);
-
-    if (!preset || preset === 'all') {
-      if (allMonths.length) setSelMonths([...allMonths]);
-      return;
-    }
-
-    const now = new Date();
-    const curMonthIdx = now.getMonth(); // 0-based
-    let count = preset === 'thisMonth' ? 1 : preset === 'last3' ? 3 : preset === 'last6' ? 6 : 12;
-    const target = [];
-    for (let i = 0; i < count; i++) {
-      const idx = (curMonthIdx - i + 12) % 12;
-      target.push(MONTH_NAMES[idx]);
-    }
-    setSelMonths(allMonths.filter(m => target.includes(m)));
+    if (preset) setSelMonths(presetMonths(preset, new Date(), allMonths));
   };
 
-  const resetAllFilters = () => {
-    setSelMonths([...allMonths]);
-    setSelTypes([...ALL_TYPES]);
-    setSelAccounts([...allBanks]);
-    setSelCategories([...allCategories]);
-    setSearch('');
-    setDateFrom('');
-    setDateTo('');
-    setActivePreset('all');
-  };
-
-  // ── DATA PROCESSING ──────────────────────────────────────────────────────────
-  const MONTH_NUM = useMemo(() => ({ Jan: 1, Feb: 2, Mar: 3, Apr:4,May:5,Jun:6,Jul:7,Aug:8,Sep:9,Oct:10,Nov:11,Dec:12 }), []);
-  
+  // ── filtered rows ───────────────────────────────────────────────────────────
   const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
     return rawRecords.filter(r => {
       if (r.Amount === 0) return false;
-      if (!selMonths.includes(r.Month)) return false;
+      if (!selMonths.includes(r.MonthKey)) return false;
       if (!selTypes.includes(r['Transaction Type'])) return false;
-      if (!selAccounts.includes(r['Account Name'])) return false;
+      // a row matches an account filter through either side of a transfer
+      if (!selAccounts.includes(r['Account Name']) && !(r['To Account'] && selAccounts.includes(r['To Account']))
+        && !(r['Account Name'] === '' && selAccounts.length === allBanks.length)) return false;
       if (!selCategories.includes(r.Category)) return false;
-      if ((dateFrom || dateTo) && r.Date > 0) {
-        const mIdx = MONTH_NUM[r.Month] || 0;
-        const fyExtracted = r.Year || 2025;
-        const recordVal = fyExtracted * 10000 + mIdx * 100 + r.Date;
-        
-        if (dateFrom) {
-          const [fy, fm, fd] = dateFrom.split('-').map(Number);
-          if (recordVal < fy * 10000 + fm * 100 + fd) return false;
-        }
-        if (dateTo) {
-          const [ty, tm, td] = dateTo.split('-').map(Number);
-          if (recordVal > ty * 10000 + tm * 100 + td) return false;
-        }
-      }
-      if (search !== '' && !r.Description.toLowerCase().includes(search.toLowerCase()) &&
-          !r.Name.toLowerCase().includes(search.toLowerCase()) &&
-          !r.Category.toLowerCase().includes(search.toLowerCase())) return false;
+      if (dateFrom && r.DateISO < dateFrom) return false;
+      if (dateTo && r.DateISO > dateTo) return false;
+      if (q && ![r.Description, r.Name, r.Category].some(v => v.toLowerCase().includes(q))) return false;
       return true;
     });
-  }, [rawRecords, selMonths, selTypes, selAccounts, selCategories, search, dateFrom, dateTo, MONTH_NUM]);
+  }, [rawRecords, selMonths, selTypes, selAccounts, allBanks.length, selCategories, search, dateFrom, dateTo]);
 
-  // Filtered rows without opening balances: used for income, spending and charts
-  const activity = useMemo(() => filtered.filter(r => !isOpeningBalance(r)), [filtered]);
+  // ── derived figures ─────────────────────────────────────────────────────────
+  const today = useMemo(() => lastUpdated || new Date(), [lastUpdated]); // "today" = when the data was last loaded
+  const friends = useMemo(() => friendBalances(rawRecords), [rawRecords]);
+  const friendsNet = useMemo(() => friends.reduce((s, f) => s + f.balance, 0), [friends]);
+  const worth = useMemo(() => netWorth(accountBalances(rawRecords), creditAccounts, friendsNet), [rawRecords, creditAccounts, friendsNet]);
+  const fixedMonthly = useMemo(() => rawInstalments.reduce((s, i) => s + i.monthly, 0), [rawInstalments]);
+  const month = useMemo(() => thisMonth(rawRecords, today, monthlyBudget, fixedMonthly), [rawRecords, today, monthlyBudget, fixedMonthly]);
 
-  // ── FRIENDS SUMMARY — derived from Owes/Owed/Settled rows in rawRecords ────
-  // Owes  → friend owes you  → positive balance (you are owed money)
-  // Owed  → you owe friend   → negative balance (you owe money)
-  // Settled → debt cleared  → zero net
-  const friendsSummary = useMemo(() => {
-    const map = {};
-    rawRecords.filter(r => FRIEND_TYPES.has(r['Transaction Type']) && r.Name).forEach(r => {
-      const txType = r['Transaction Type'];
-      const name = r.Name;
-      if (!map[name]) map[name] = 0;
-      if (txType === 'Owes') map[name] += r.Amount;       // friend owes you
-      else if (txType === 'Owed') map[name] -= r.Amount;  // you owe friend
-      // Settled contributes 0 (clears via the net balance naturally)
-    });
-    return Object.entries(map).map(([name, balance]) => ({
-      name,
-      balance,
-      displayAmount: Math.abs(balance),
-      status: balance > 0 ? 'owed' : balance < 0 ? 'owes' : 'settled',
-    })).sort((a, b) => Math.abs(b.balance) - Math.abs(a.balance));
-  }, [rawRecords]);
+  const shownMonths = useMemo(() => allMonths.filter(m => selMonths.includes(m)), [allMonths, selMonths]);
+  const overview = useMemo(() => ({
+    totals: periodTotals(filtered),
+    monthly: monthlySeries(filtered, shownMonths),
+    categories: categoryBreakdown(filtered),
+    unclassified: unclassifiedShare(filtered),
+    byAccount: spendingByAccount(filtered),
+    topSpending: [...filtered].filter(isSpending).sort((a, b) => b.Amount - a.Amount).slice(0, 6),
+    transfers: transferSummary(filtered),
+    recurring: recurringSpending(filtered),
+  }), [filtered, shownMonths]);
 
-  const totalOwed = useMemo(() => friendsSummary.reduce((s, f) => s + f.balance, 0), [friendsSummary]);
+  const periodLabel = activePreset ? PRESET_LABELS[activePreset]
+    : shownMonths.length === 1 ? monthLabel(shownMonths[0])
+    : shownMonths.length ? `${monthLabel(shownMonths[0])} – ${monthLabel(shownMonths[shownMonths.length - 1])}` : 'No months selected';
 
-  const kpis = useMemo(() => {
-    // Only count Credit/Debit for financial KPIs — Owes/Owed/Settled are friend-debt tracking
-    const income = activity.filter(r => r['Transaction Type'] === 'Credit').reduce((s, r) => s + r.Amount, 0);
-    const expense = activity.filter(r => r['Transaction Type'] === 'Debit').reduce((s, r) => s + r.Amount, 0);
-    const transfers = activity.filter(r => r['Transaction Type'] === 'Transfer').reduce((s, r) => s + r.Amount, 0);
-
-    const net = income - expense;
-    const savingsRate = income > 0 ? ((net / income) * 100).toFixed(1) : 0;
-    return { income, expense, net, transfers, savingsRate, txnCount: activity.length };
-  }, [activity]);
-
-  const monthlyData = useMemo(() => {
-    return allMonths.filter(m => selMonths.includes(m)).map(m => {
-      const rows = activity.filter(r => r.Month === m);
-      const income = rows.filter(r => r['Transaction Type'] === 'Credit').reduce((s,r)=>s+r.Amount,0);
-      const expense = rows.filter(r => r['Transaction Type'] === 'Debit').reduce((s,r)=>s+r.Amount,0);
-      return { month: m, Income: income, Expense: expense, Net: income - expense };
-    });
-  }, [activity, selMonths, allMonths]);
-
-  const categoryData = useMemo(() => {
-    const map = {};
-    activity.filter(r => r['Transaction Type'] === 'Debit' && r.Category).forEach(r => {
-      map[r.Category] = (map[r.Category] || 0) + r.Amount;
-    });
-    return Object.entries(map).sort((a,b) => b[1]-a[1]).slice(0, 10).map(([name, value]) => ({ name: name.split(' ').slice(0,2).join(' '), full: name, value }));
-  }, [activity]);
-
-  const accountData = useMemo(() => {
-    const map = {};
-    activity.filter(r => r['Transaction Type'] === 'Debit').forEach(r => {
-      if (r['Account Name']) map[r['Account Name']] = (map[r['Account Name']] || 0) + r.Amount;
-    });
-    return Object.entries(map).sort((a,b)=>b[1]-a[1]).map(([name, value]) => ({ name, value }));
-  }, [activity]);
-
-  const topTxns = useMemo(() =>
-    [...activity].filter(r => r['Transaction Type'] === 'Debit' && r.Description)
-      .sort((a,b) => b.Amount - a.Amount).slice(0, 8),
-  [activity]);
-
-  const currentBalances = useMemo(() => {
-  const balances = {};
-  rawRecords.forEach(r => {
-    const acc = r['Account Name'];
-    if (!acc) return;
-    if (!balances[acc]) balances[acc] = 0;
-
-    const type = r['Transaction Type'];
-    if (type === 'Credit') balances[acc] += r.Amount;
-    else if (type === 'Debit') balances[acc] -= r.Amount;
-    else if (type === 'Transfer') {
-      balances[acc] -= r.Amount;
-      if (r['To Account']) {
-        if (!balances[r['To Account']]) balances[r['To Account']] = 0;
-        balances[r['To Account']] += r.Amount;
-      }
-    }
-    else if (type === 'Owed') balances[acc] -= r.Amount;  // you paid for friend → money left your account
-    else if (type === 'Owes') balances[acc] += r.Amount;  // friend paid you back → money came in (or you're tracking they owe you)
-    // Settled → no account movement, just clears the friend debt
-  });
-  return Object.entries(balances)
-    .map(([name, balance]) => ({ name, balance }))
-    .sort((a, b) => b.balance - a.balance);
-}, [rawRecords]);
-
-  // ── RECURRING EXPENSES ──────────────────────────────────────────────────────
-  const recurringExpenses = useMemo(() => {
-    const debitRows = activity.filter(r => r['Transaction Type'] === 'Debit' && r.Description);
-    const descMonths = {};
-    debitRows.forEach(r => {
-      const key = r.Description.toLowerCase().trim();
-      if (!descMonths[key]) descMonths[key] = { desc: r.Description, months: new Set(), total: 0, category: r.Category };
-      descMonths[key].months.add(r.Month);
-      descMonths[key].total += r.Amount;
-    });
-    return Object.values(descMonths)
-      .filter(d => d.months.size >= 2)
-      .sort((a, b) => b.total - a.total)
-      .slice(0, 8)
-      .map(d => ({ description: d.desc, monthCount: d.months.size, total: d.total, category: d.category }));
-  }, [activity]);
-
-  // ── SPENDING TREND ────────────────────────────────────────────────────────
-  const spendingTrend = useMemo(() => {
-    if (monthlyData.length < 2) return null;
-    const last = monthlyData[monthlyData.length - 1];
-    const prev = monthlyData[monthlyData.length - 2];
-    if (!prev || prev.Expense === 0) return null;
-    const pctChange = ((last.Expense - prev.Expense) / prev.Expense * 100).toFixed(1);
-    return { pctChange: parseFloat(pctChange), lastMonth: last.month, prevMonth: prev.month };
-  }, [monthlyData]);
-
-  // ── RENDER ──────────────────────────────────────────────────────────────────
+  // ── render ──────────────────────────────────────────────────────────────────
   if (!sheetUrl) return <SetupUrl onSave={handleSaveUrl} />;
 
+  const hasData = rawRecords.length > 0;
+
   return (
-    <div style={{ background: PALETTE.bg, minHeight: '100vh', fontFamily: "'Outfit', 'Segoe UI', sans-serif", color: PALETTE.text }}>
+    <>
       <Header
-        tabs={['overview','transactions','friends']}
+        tabs={['overview', 'transactions', 'friends']}
         activeTab={activeTab} setActiveTab={setActiveTab}
         filtersOpen={filtersOpen} setFiltersOpen={setFiltersOpen}
         lastUpdated={lastUpdated} loading={loading}
-        fetchData={fetchData} sheetUrl={sheetUrl}
-        onChangeUrl={handleChangeUrl}
+        onRefresh={() => fetchData(sheetUrl)}
         onOpenSettings={() => setSettingsOpen(true)}
       />
 
       <SettingsModal
-        isOpen={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
-        monthlyBudget={monthlyBudget}
-        onSaveBudget={handleSaveBudget}
+        isOpen={settingsOpen} onClose={() => setSettingsOpen(false)}
+        monthlyBudget={monthlyBudget} onSaveBudget={handleSaveBudget}
+        accounts={allBanks} creditAccounts={creditAccounts} onSaveCredit={handleSaveCredit}
+        onDisconnect={handleDisconnect}
       />
 
-      <div className="app-container" style={{ maxWidth: 1400, margin: '0 auto' }}>
-        {loading && rawRecords.length === 0 && (
-          <div style={{ textAlign: 'center', padding: '80px 20px' }}>
-            <div style={{ fontSize: 40, marginBottom: 16 }}>⏳</div>
-            <div style={{ fontSize: 16, color: PALETTE.text, fontWeight: 700 }}>Fetching your data...</div>
+      <main className="page">
+        {loading && !hasData && <p className="state">Loading your sheet…</p>}
+
+        {error && !hasData && (
+          <div className="state">
+            <p style={{ color: 'var(--text)', fontWeight: 600, margin: '0 0 4px' }}>Could not load data</p>
+            <p className="small" style={{ margin: '0 0 16px' }}>{error}</p>
+            <button type="button" className="btn" onClick={() => fetchData(sheetUrl)}>Try again</button>
           </div>
         )}
 
-        {error && rawRecords.length === 0 && (
-          <div style={{ textAlign: 'center', padding: '60px 20px' }}>
-            <div style={{ fontSize: 40, marginBottom: 16 }}>⚠️</div>
-            <div style={{ fontSize: 16, color: PALETTE.red, fontWeight: 700 }}>Could not load data</div>
-            <div style={{ fontSize: 12, color: PALETTE.muted, marginTop: 8, marginBottom: 20 }}>{error}</div>
-            <button onClick={() => fetchData(sheetUrl)} style={{ padding: '10px 24px', borderRadius: 8, background: PALETTE.accent, color: '#fff', border: 'none', cursor: 'pointer' }}>Try Again</button>
-          </div>
-        )}
-
-        {rawRecords.length > 0 && (
+        {hasData && (
           <>
-            {filtersOpen && (
-              <FilterPanel
-                allMonths={allMonths} selMonths={selMonths} setSelMonths={setSelMonths}
-                selTypes={selTypes} setSelTypes={setSelTypes}
-                allBanks={allBanks} selAccounts={selAccounts} setSelAccounts={setSelAccounts}
-                allCategories={allCategories} selCategories={selCategories} setSelCategories={setSelCategories}
-                dateFrom={dateFrom} setDateFrom={setDateFrom} dateTo={dateTo} setDateTo={setDateTo}
-                search={search} setSearch={setSearch} filteredCount={filtered.length}
-                activePreset={activePreset} onPresetChange={applyPreset} onResetAll={resetAllFilters}
-              />
-            )}
+            <FilterPanel
+              open={filtersOpen}
+              allMonths={allMonths} selMonths={selMonths} setSelMonths={setSelMonths}
+              selTypes={selTypes} setSelTypes={setSelTypes}
+              allBanks={allBanks} selAccounts={selAccounts} setSelAccounts={setSelAccounts}
+              allCategories={allCategories} selCategories={selCategories} setSelCategories={setSelCategories}
+              dateFrom={dateFrom} setDateFrom={setDateFrom} dateTo={dateTo} setDateTo={setDateTo}
+              search={search} setSearch={setSearch} filteredCount={filtered.length}
+              activePreset={activePreset} onPresetChange={applyPreset} onResetAll={resetAll}
+            />
 
             {activeTab === 'overview' && (
-              <OverviewTab kpis={kpis} totalOwed={totalOwed} friendsSummary={friendsSummary} monthlyData={monthlyData} accountData={accountData} categoryData={categoryData} topTxns={topTxns} currentBalances={currentBalances} monthlyBudget={monthlyBudget} recurringExpenses={recurringExpenses} spendingTrend={spendingTrend} instalments={rawInstalments} />
+              <OverviewTab today={today} month={month} worth={worth} periodLabel={periodLabel}
+                instalments={rawInstalments} {...overview} />
             )}
-
-            {activeTab === 'transactions' && (
-              <TransactionsTab filtered={filtered} />
-            )}
-
-            {activeTab === 'friends' && (
-              <FriendsTab friendsSummary={friendsSummary} rawRecords={rawRecords} selMonths={selMonths} totalOwed={totalOwed} />
-            )}
+            {activeTab === 'transactions' && <TransactionsTab filtered={filtered} />}
+            {activeTab === 'friends' && <FriendsTab friends={friends} rows={filtered} />}
           </>
         )}
-      </div>
-    </div>
+      </main>
+    </>
   );
 }

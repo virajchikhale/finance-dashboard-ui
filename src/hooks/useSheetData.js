@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
-import { parseSheetDate, toNum, toNumOrNull, sanitizeString, normalizeType } from '../utils/helpers';
+import { parseSheetDate, toNum, toNumOrNull, sanitizeString, normalizeType, MONTH_NAMES } from '../utils/helpers';
+import { monthKey } from '../utils/insights';
 
 export const useSheetData = () => {
   const [rawRecords, setRawRecords] = useState([]);
@@ -27,7 +28,10 @@ export const useSheetData = () => {
         const month = parsed.month;
         const day   = parsed.day;
         const year  = parsed.year;
+        const monthIndex = MONTH_NAMES.indexOf(month);
         return {
+          MonthKey: monthIndex >= 0 ? monthKey(year, monthIndex) : '',
+          DateISO: monthIndex >= 0 ? `${monthKey(year, monthIndex)}-${String(day).padStart(2, '0')}` : '',
           Year: year,
           Month: month,
           Date: day,

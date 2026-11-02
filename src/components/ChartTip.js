@@ -1,13 +1,16 @@
 import React from 'react';
-import { PALETTE, fmtFull } from '../utils/helpers';
+import { inr } from '../utils/helpers';
 
 const ChartTip = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
   return (
-    <div style={{ background: PALETTE.surface, border: `1px solid ${PALETTE.border}`, borderRadius: 8, padding: '10px 14px', fontSize: 12 }}>
-      <p style={{ color: PALETTE.muted, marginBottom: 6 }}>{label}</p>
-      {payload.map((p, i) => (
-        <p key={i} style={{ color: p.color, fontWeight: 700 }}>{p.name}: {fmtFull(p.value)}</p>
+    <div className="tooltip">
+      <div className="tooltip-title">{label ?? payload[0].payload?.name}</div>
+      {payload.map((p) => (
+        <div key={p.dataKey} className="tooltip-row">
+          <span><i style={{ background: p.color || p.fill }} />{p.name === 'value' ? 'Spent' : p.name}</span>
+          <span className="num">{inr(p.value)}</span>
+        </div>
       ))}
     </div>
   );

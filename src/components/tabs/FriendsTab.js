@@ -1,70 +1,66 @@
 import React from 'react';
-import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from "recharts";
-import { PALETTE, CAT_COLORS, fmtFull } from '../../utils/helpers';
+import { inr, FRIEND_TYPES } from '../../utils/helpers';
+import { formatDay } from '../../utils/insights';
 
-const FriendsTab = ({ friendsSummary, rawRecords, selMonths, totalOwed }) => (
-  <div className="grid-friends">
-    <div style={{ background: PALETTE.card, border: `1px solid ${PALETTE.border}`, borderRadius: 12, padding: 20 }}>
-      <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 16, color: PALETTE.white }}>👥 Friends Balance</div>
-      {friendsSummary.map((f, i) => (
-        <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', borderBottom: `1px solid ${PALETTE.border}` }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={{ width: 36, height: 36, borderRadius: '50%', background: `${CAT_COLORS[i % CAT_COLORS.length]}33`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, color: CAT_COLORS[i % CAT_COLORS.length], fontWeight: 800 }}>{f.name[0]}</div>
-            <div>
-              <div style={{ fontWeight: 700, color: PALETTE.text }}>{f.name}</div>
-              <div style={{ fontSize: 10, color: PALETTE.muted }}>
-                {f.status === 'owed' ? 'owes you' : f.status === 'owes' ? 'you owe' : 'settled'}
-              </div>
-            </div>
-          </div>
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: 18, fontWeight: 800, color: f.status === 'owed' ? PALETTE.green : f.status === 'owes' ? PALETTE.red : PALETTE.muted, fontFamily: 'monospace' }}>
-              {fmtFull(f.displayAmount)}
-            </div>
-            <span style={{ padding: '2px 8px', borderRadius: 10, fontSize: 10, fontWeight: 700, background: f.status === 'owed' ? `${PALETTE.green}22` : f.status === 'owes' ? `${PALETTE.red}22` : `${PALETTE.muted}22`, color: f.status === 'owed' ? PALETTE.green : f.status === 'owes' ? PALETTE.red : PALETTE.muted }}>
-              {f.status}
-            </span>
-          </div>
+const STATUS = { 'owes-you': 'owes you', 'you-owe': 'you owe', settled: 'settled' };
+
+const FriendsTab = ({ friends, rows }) => {
+  const owedToYou = friends.filter(f => f.balance > 0).reduce((s, f) => s + f.balance, 0);
+  const youOwe = friends.filter(f => f.balance < 0).reduce((s, f) => s - f.balance, 0);
+  const net = owedToYou - youOwe;
+  const history = rows.filter(r => FRIEND_TYPES.has(r['Transaction Type']) && r.Name)
+    .sort((a, b) => (a.DateISO < b.DateISO ? 1 : -1)).slice(0, 30);
+
+  return (
+    <>
+      <div className="grid grid-4">
+        <div className="card stat"><span className="stat-label">Owed to you</span><span className="stat-value num">{inr(owedToYou)}</span></div>
+        <div className="card stat"><span className="stat-label">You owe</span><span className="stat-value num">{inr(youOwe)}</span></div>
+        <div className="card stat">
+          <span className="stat-label">Net</span>
+          <span className={`stat-value num${net < 0 ? ' neg' : ''}`}>{net < 0 ? `−${inr(net)}` : inr(net)}</span>
+          <span className="stat-note">{net > 0 ? 'In your favour' : net < 0 ? 'You owe overall' : 'All square'}</span>
         </div>
-      ))}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 16, paddingTop: 16, borderTop: `1px solid ${PALETTE.border}` }}>
-        <span style={{ fontWeight: 700, color: PALETTE.white }}>
-          {totalOwed > 0 ? "Total Owed to You" : totalOwed < 0 ? "Total You Owe" : "All Settled"}
-        </span>
-        <span style={{ fontSize: 22, fontWeight: 900, color: totalOwed > 0 ? PALETTE.green : totalOwed < 0 ? PALETTE.red : PALETTE.muted, fontFamily: 'monospace' }}>
-          {fmtFull(Math.abs(totalOwed))}
-        </span>
+        <div className="card stat"><span className="stat-label">People with a balance</span><span className="stat-value num">{friends.filter(f => f.balance !== 0).length}</span></div>
       </div>
-    </div>
 
-    <div style={{ background: PALETTE.card, border: `1px solid ${PALETTE.border}`, borderRadius: 12, padding: 20 }}>
-      <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 16, color: PALETTE.white }}>📊 Friends Breakdown</div>
-      <ResponsiveContainer width="100%" height={200}>
-        <PieChart>
-          <Pie data={friendsSummary.filter(f => f.balance > 0).map(f => ({ name: f.name, value: f.balance }))} cx="50%" cy="50%" innerRadius={45} outerRadius={75} dataKey="value" paddingAngle={4}>
-            {friendsSummary.filter(f => f.balance > 0).map((_, i) => <Cell key={i} fill={CAT_COLORS[i % CAT_COLORS.length]} />)}
-          </Pie>
-          <Tooltip formatter={(v) => fmtFull(v)} contentStyle={{ background: PALETTE.surface, border: `1px solid ${PALETTE.border}`, fontSize: 12 }} />
-          <Legend formatter={(v) => <span style={{ fontSize: 11, color: PALETTE.muted }}>{v}</span>} />
-        </PieChart>
-      </ResponsiveContainer>
-      
-      <div style={{ marginTop: 16, padding: 14, background: `${PALETTE.accent}11`, borderRadius: 10, border: `1px solid ${PALETTE.accent}33` }}>
-        <div style={{ fontSize: 11, color: PALETTE.muted }}>Transactions with friends this period</div>
-        <div style={{ display: 'flex', gap: 16, marginTop: 8 }}>
-          {[...new Set(rawRecords.filter(r => r.Name).map(r => r.Name))].slice(0,4).map((n, i) => {
-            const cnt = rawRecords.filter(r => r.Name === n && selMonths.includes(r.Month)).length;
-            return (
-              <div key={i} style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: 16, fontWeight: 800, color: CAT_COLORS[i] }}>{cnt}</div>
-                <div style={{ fontSize: 10, color: PALETTE.muted }}>{n}</div>
-              </div>
-            );
-          })}
+      <div className="grid grid-2" style={{ marginTop: 14 }}>
+        <div className="card">
+          <div className="card-head"><h2 className="card-title">Balances</h2><span className="card-sub">All entries</span></div>
+          {friends.length ? (
+            <ul className="rows">
+              {friends.map(f => (
+                <li key={f.name} className="row">
+                  <div className="row-main">
+                    <div className="row-title">{f.name}</div>
+                    <div className="row-sub">{STATUS[f.status]}</div>
+                  </div>
+                  <span className={`row-value num${f.balance < 0 ? ' neg' : ''}`}>{inr(f.balance)}</span>
+                </li>
+              ))}
+            </ul>
+          ) : <p className="muted small">No Owes, Owed or Settled entries yet.</p>}
+        </div>
+
+        <div className="card">
+          <div className="card-head"><h2 className="card-title">Recent entries</h2><span className="card-sub">Follows the filters</span></div>
+          {history.length ? (
+            <ul className="rows">
+              {history.map((r, i) => (
+                <li key={i} className="row">
+                  <div className="row-main">
+                    <div className="row-title">{r.Name} · {r.Description}</div>
+                    <div className="row-sub">{[formatDay(r.DateISO), r['Transaction Type'], r['Account Name']].filter(Boolean).join(' · ')}</div>
+                  </div>
+                  <span className="row-value num">{inr(r.Amount)}</span>
+                </li>
+              ))}
+            </ul>
+          ) : <p className="muted small">No friend entries in this period.</p>}
         </div>
       </div>
-    </div>
-  </div>
-);
+    </>
+  );
+};
 
 export default FriendsTab;

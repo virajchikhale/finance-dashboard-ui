@@ -1,6 +1,6 @@
 # Finance Dashboard
 
-A personal-finance dashboard (React) that reads your own Google Sheet through a small Google Apps Script web app. The same script also takes new entries from an Apple Shortcut. Overview KPIs and charts, transactions with filters, friends' owes / owed balances, instalments and a monthly budget bar. There is no backend server of its own: the browser talks directly to your Apps Script URL.
+A personal-finance dashboard (React, works on phones, follows the system light/dark setting) that reads your own Google Sheet through a small Google Apps Script web app. The same script also takes new entries from an Apple Shortcut. Overview KPIs and charts, transactions with filters, friends' owes / owed balances, instalments and a monthly budget bar. There is no backend server of its own: the browser talks directly to your Apps Script URL.
 
 ## How it works
 
@@ -15,6 +15,13 @@ Google Sheet  ->  Apps Script web app (apps-script/Code.gs, protected by an API 
 2. **Apps Script:** Extensions > Apps Script, paste `apps-script/Code.gs`. Then **Project Settings > Script properties > Add `API_KEY`** with a long random value (`openssl rand -hex 24`). The key lives only in your script settings, never in this repo. Without it the endpoint refuses every request.
 3. **Deploy** the script as a Web app (Execute as *Me*, access *Anyone*). Your data is protected by the API key, not by the URL being secret.
 4. **Open the dashboard** and paste `https://script.google.com/macros/s/<id>/exec?key=<API_KEY>`. The URL is kept only in your browser's local storage and is sent only to Google.
+
+## What the dashboard shows
+
+- **This month** (ignores filters): spent so far, average per day, projection for the month (from day 7), budget left, and the fixed monthly commitments from `Instalments`.
+- **Net worth**: bank and cash, minus credit card and pay-later dues, plus or minus what friends owe. Which accounts count as credit is set in Settings (default: names ending in `CC` or `PL`). Each account shows its last entry date and is flagged after 7 days without one.
+- **Selected period** (follows the filters): income, spending, net, savings rate, a monthly chart, spending by category (with a warning when more than 20% is "Other" or uncategorised), largest expenses, spending by account, money moved between accounts, fixed commitments and repeating expenses.
+- Months are grouped by year and month, so November 2026 and November 2027 stay separate. Opening balances and transfers are never counted as income or spending.
 
 ## Adding entries (Apple Shortcut)
 
