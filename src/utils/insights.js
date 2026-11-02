@@ -142,8 +142,8 @@ export function accountBalances(records) {
         a.balance -= r.Amount;
         if (r['To Account']) touch(r['To Account'], r.DateISO).balance += r.Amount;
         break;
-      case 'Owed': a.balance -= r.Amount; break; // you paid on a friend's behalf
-      case 'Owes': a.balance += r.Amount; break; // a friend paid you
+      case 'Owed': a.balance -= r.Amount; break; // you paid for or lent to a friend: money left your account
+      case 'Owes': a.balance += r.Amount; break; // a friend paid for or lent to you: money came in
       default: break;                            // Settled moves no money
     }
   });
@@ -154,8 +154,10 @@ export function friendBalances(records) {
   const map = {};
   records.filter(r => FRIEND_TYPES.has(typeOf(r)) && r.Name).forEach(r => {
     if (!(r.Name in map)) map[r.Name] = 0;
-    if (typeOf(r) === 'Owes') map[r.Name] += r.Amount;      // friend owes you
-    else if (typeOf(r) === 'Owed') map[r.Name] -= r.Amount; // you owe friend
+    // Same direction as the account: money you paid out (Owed) is owed back to you, money you received (Owes) you owe.
+    // That way paying for a friend moves value from your account to "friends", and net worth does not change.
+    if (typeOf(r) === 'Owed') map[r.Name] += r.Amount;      // the friend owes you
+    else if (typeOf(r) === 'Owes') map[r.Name] -= r.Amount; // you owe the friend
   });
   return Object.entries(map)
     .map(([name, balance]) => ({ name, balance, status: balance > 0 ? 'owes-you' : balance < 0 ? 'you-owe' : 'settled' }))

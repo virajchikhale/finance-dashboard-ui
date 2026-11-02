@@ -14,7 +14,7 @@
 				<key>UUID</key>
 				<string>B1EB6D32-78C1-403F-9A4A-E2A73AA4BAF3</string>
 				<key>WFTextActionText</key>
-				<string>https://script.google.com/macros/s/AKfycbwHRz8zkPitsXK28w3oYdkj3STKw09kXmpKHsswYpZ1jJ6cAE6Zl-MKv39XoopVqw-3Sg/exec?key=YOUR_API_KEY</string>
+				<string>YOUR_WEB_APP_URL?key=YOUR_WRITE_KEY</string>
 			</dict>
 		</dict>
 		<dict>

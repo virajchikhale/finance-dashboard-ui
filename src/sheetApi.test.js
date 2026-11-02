@@ -5,7 +5,8 @@ import vm from 'vm';
 import { normalizeType, isOpeningBalance } from './utils/helpers';
 
 const SOURCE = fs.readFileSync(path.join(__dirname, '..', 'apps-script', 'Code.gs'), 'utf8');
-const KEY = 'test-key-0123456789abcdef';
+const KEY = 'write-key-0123456789abcdef0123456789'; // WRITE_KEY
+const READ = 'read-key-0123456789abcdef01234567890';  // READ_KEY
 
 function fakeSheet(rows) {
   const data = rows.map(r => r.slice());
@@ -29,7 +30,7 @@ function fakeSheet(rows) {
   };
 }
 
-function load(sheets, { apiKey = KEY } = {}) {
+function load(sheets, { keys = { READ_KEY: READ, WRITE_KEY: KEY } } = {}) {
   const book = {
     Records: fakeSheet([['Date', 'Description', 'Name', 'Amount', 'Transaction Type', 'Category', 'Account Name', 'To Account']]),
     Dropdowns: fakeSheet([
@@ -45,7 +46,7 @@ function load(sheets, { apiKey = KEY } = {}) {
       CopyPasteType: { PASTE_DATA_VALIDATION: 1, PASTE_FORMAT: 2 },
       flush: () => {},
     },
-    PropertiesService: { getScriptProperties: () => ({ getProperty: () => apiKey }) },
+    PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => keys[k] ?? null }) },
     LockService: { getScriptLock: () => ({ tryLock: () => true, releaseLock: () => {} }) },
     ContentService: {
       MimeType: { JSON: 'json' },
@@ -55,7 +56,7 @@ function load(sheets, { apiKey = KEY } = {}) {
   vm.createContext(ctx);
   vm.runInContext(SOURCE, ctx);
   const post = (fields) => ctx.doPost({ parameter: { key: KEY, ...fields } });
-  const get = (params) => ctx.doGet({ parameter: { key: KEY, ...params } });
+  const get = (params) => ctx.doGet({ parameter: { key: READ, ...params } });
   return { book, post, get, ctx };
 }
 
@@ -80,7 +81,15 @@ describe('Code.gs doPost', () => {
 
   test('rejects a wrong key and a missing server key', () => {
     expect(load().ctx.doPost({ parameter: { ...debit, key: 'nope' } }).error).toBe('Unauthorized');
-    expect(load({}, { apiKey: '' }).post(debit).error).toMatch(/not configured/);
+    expect(load({}, { keys: { READ_KEY: READ } }).post(debit).error).toMatch(/not configured/);
+    expect(load({}, { keys: { READ_KEY: 'short', WRITE_KEY: KEY } }).post(debit).error).toMatch(/32\+ characters/);
+    expect(load({}, { keys: { READ_KEY: KEY, WRITE_KEY: KEY } }).post(debit).error).toMatch(/must be different/);
+  });
+
+  test('the read key cannot add rows', () => {
+    const { book, ctx } = load();
+    expect(ctx.doPost({ parameter: { ...debit, key: READ } }).error).toBe('Unauthorized');
+    expect(book.Records.data).toHaveLength(1);
   });
 
   test('does not block credit card spending (no balance check)', () => {
@@ -123,10 +132,12 @@ describe('Code.gs doPost', () => {
     expect(load().post({ ...owes, name: 'Mama' }).success).toBe(true);
   });
 
-  test('a friend opening balance needs no account, a normal friend row does', () => {
+  test('only Owed needs an account among friend rows, except as an opening balance', () => {
     const opening = { ...debit, transactionType: 'Owed', name: 'Mama', category: 'Opening Balance', accountName: '' };
     expect(load().post(opening).success).toBe(true);
     expect(load().post({ ...opening, category: '' }).error).toMatch(/accountName/);
+    expect(load().post({ ...opening, category: '', transactionType: 'Owes' }).success).toBe(true);
+    expect(load().post({ ...opening, category: '', transactionType: 'Settled' }).success).toBe(true);
   });
 
   test('a repeated id is saved once', () => {
@@ -144,6 +155,19 @@ describe('Code.gs doPost', () => {
 });
 
 describe('Code.gs doGet', () => {
+  test('the write key gets the lists but not the records', () => {
+    const { ctx } = load();
+    expect(ctx.doGet({ parameter: { key: KEY, action: 'lists' } }).accounts).toEqual(['SBI', 'HDFCCC']);
+    expect(ctx.doGet({ parameter: { key: KEY } }).error).toBe('Unauthorized');
+    expect(ctx.doGet({ parameter: { key: READ } }).Records).toEqual([]);
+  });
+
+  test('the manifest limits the script to this spreadsheet', () => {
+    const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'apps-script', 'appsscript.json'), 'utf8'));
+    expect(manifest.oauthScopes).toEqual(['https://www.googleapis.com/auth/spreadsheets.currentonly']);
+    expect(SOURCE).toMatch(/@OnlyCurrentDoc/);
+  });
+
   test('lists come from Dropdowns, ignoring the duplicate empty Category column', () => {
     expect(load().get({ action: 'lists' })).toEqual({
       categories: ['Rent & Housing', 'Trip'],

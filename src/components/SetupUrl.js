@@ -31,7 +31,7 @@ const SetupUrl = ({ onSave }) => {
               placeholder="https://script.google.com/macros/s/…/exec?key=…" autoComplete="off" required
               aria-invalid={showError} aria-describedby="url-hint" />
             <span id="url-hint" className={showError ? 'small neg' : 'hint'}>
-              {showError ? 'This must be an https://script.google.com address.' : 'Apps Script → Deploy → Web app URL, followed by ?key=<API_KEY>.'}
+              {showError ? 'This must be an https://script.google.com address.' : 'Apps Script → Deploy → Web app URL, followed by ?key=<READ_KEY>.'}
             </span>
           </label>
           <button type="submit" className="btn btn-primary btn-block" disabled={!valid}>Connect</button>

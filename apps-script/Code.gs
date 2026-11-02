@@ -1,16 +1,20 @@
 /**
+ * @OnlyCurrentDoc
+ * (Limits the script to the spreadsheet it is attached to; it cannot open your other Drive files.)
+ *
  * JSON API for the finance sheet: the dashboard reads through it, the Apple Shortcut writes through it.
+ * Full setup guide: docs/apps-script.md
  *
- * Setup (once):
- *   1. Project Settings > Script properties > Add script property:  API_KEY = <long random string>
- *      (generate one with `openssl rand -hex 24`). The key is NOT kept in this file or in git.
- *   2. Deploy > New deployment > Web app > Execute as: Me, Who has access: Anyone.
- *      After editing this file use Deploy > Manage deployments > Edit > New version, so the URL stays the same.
- *   3. Dashboard:  <web app URL>?key=<API_KEY>
- *      Shortcut:    GET  <web app URL>?key=<API_KEY>&action=lists   -> dropdown lists for the pickers, most recently used first
- *                   POST <web app URL>?key=<API_KEY>                 -> add one row to Records
+ * Two keys, set in Project Settings > Script properties (never in this file or in git):
+ *   READ_KEY   used by the dashboard. Can read the sheet, cannot add rows.
+ *   WRITE_KEY  used by the Shortcut. Can add rows and read the dropdown lists, cannot read your records.
+ * Generate each with `openssl rand -hex 24`. They must be different and 32+ characters.
+ * Without both keys every request is refused (it fails closed).
  *
- * Without a configured API_KEY every request is refused (it fails closed).
+ *   GET  <web app URL>?key=<READ_KEY>                        -> Records, Instalments, Dropdowns
+ *   GET  <web app URL>?key=<READ_KEY or WRITE_KEY>&action=lists -> dropdown lists for the Shortcut pickers,
+ *                                                               most recently used first
+ *   POST <web app URL>?key=<WRITE_KEY>                       -> add one row to Records
  *
  * POST fields (form fields or a JSON body):
  *   date             YYYY-MM-DD (or anything Date() understands). Empty = today.
@@ -18,7 +22,7 @@
  *   amount           required, positive number ("1,250" is fine)
  *   transactionType  Credit | Debit | Transfer | Owes | Owed | Settled
  *   category         must be in Dropdowns > Category (or "Opening Balance"); required for Debit
- *   accountName      must be in Dropdowns > Bank Accounts
+ *   accountName      must be in Dropdowns > Bank Accounts; optional for Owes and Settled
  *   toAccount        Transfer only; must be a different bank account
  *   name             Owes / Owed / Settled only; must be in Dropdowns > Friends
  *   id               optional but recommended: a UUID from the Shortcut. A repeated id is not saved twice.
@@ -79,13 +83,23 @@ function safeEquals_(a, b) {
   return diff === 0;
 }
 
-// Returns an error message, or null when the request carries the right key
-function authError_(params) {
-  const apiKey = PropertiesService.getScriptProperties().getProperty('API_KEY');
-  if (!apiKey || apiKey.length < 16) {
-    return 'Server not configured: set the API_KEY script property (16+ characters).';
+const MIN_KEY_LENGTH = 32;
+
+// Returns an error message, or null when the request carries a key allowed for `scope`
+// ('read', 'write' or 'lists': the lists are needed by the Shortcut and contain no amounts).
+function authError_(params, scope) {
+  const props = PropertiesService.getScriptProperties();
+  const readKey = props.getProperty('READ_KEY') || '';
+  const writeKey = props.getProperty('WRITE_KEY') || '';
+  if (readKey.length < MIN_KEY_LENGTH || writeKey.length < MIN_KEY_LENGTH) {
+    return `Server not configured: set the READ_KEY and WRITE_KEY script properties (${MIN_KEY_LENGTH}+ characters each).`;
   }
-  return safeEquals_(params.key, apiKey) ? null : 'Unauthorized';
+  if (readKey === writeKey) return 'Server not configured: READ_KEY and WRITE_KEY must be different.';
+  const allowed = scope === 'read' ? [readKey] : scope === 'write' ? [writeKey] : [readKey, writeKey];
+  // Compare against every allowed key so timing does not reveal which one matched
+  let ok = false;
+  allowed.forEach(k => { if (safeEquals_(params.key, k)) ok = true; });
+  return ok ? null : 'Unauthorized';
 }
 
 // Header -> column index. When a header appears twice the first one wins, so a stray
@@ -220,9 +234,10 @@ function validateEntry_(p, lists) {
     if (!lists.friends.includes(name)) return { error: `Unknown friend "${name}". Add them to Dropdowns first` };
   }
 
-  // A friend's opening balance moves no money, so it is the one case without an account
+  // No account when no money moved: a friend's opening balance, a friend paying a shop for you (Owes), or Settled.
+  // Owed (you paid) always moves money out of one of your accounts.
   const accountName = str_(p.accountName);
-  const accountOptional = isOpening && isFriend;
+  const accountOptional = (isOpening && isFriend) || type === 'Owes' || type === 'Settled';
   if (!accountName && !accountOptional) return { error: 'Missing required field: accountName' };
   if (accountName && !lists.accounts.includes(accountName)) {
     return { error: `Unknown account "${accountName}". Add it to Dropdowns first` };
@@ -255,11 +270,12 @@ function validateEntry_(p, lists) {
 
 function doGet(e) {
   const params = (e && e.parameter) || {};
-  const auth = authError_(params);
+  const isLists = params.action === 'lists';
+  const auth = authError_(params, isLists ? 'lists' : 'read');
   if (auth) return json_({ error: auth });
 
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  if (params.action === 'lists') {
+  if (isLists) {
     const records = ss.getSheetByName(RECORDS_SHEET);
     return json_(sortByRecentUse_(readLists_(ss), records ? sheetToObjects_(records) : []));
   }
@@ -276,7 +292,7 @@ function doPost(e) {
   const lock = LockService.getScriptLock();
   try {
     const params = readParams_(e);
-    const auth = authError_(params);
+    const auth = authError_(params, 'write');
     if (auth) return fail_(auth);
     if (params.__badJson) return fail_('Body is not valid JSON');
 

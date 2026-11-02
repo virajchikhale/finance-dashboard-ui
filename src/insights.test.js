@@ -84,13 +84,20 @@ describe('balances and net worth', () => {
 
   test('cards are dues, friends add to net worth', () => {
     const friends = friendBalances(rows);
-    expect(friends.find(f => f.name === 'Rohan').status).toBe('owes-you');
-    expect(friends.find(f => f.name === 'Mama').balance).toBe(-900);
+    expect(friends.find(f => f.name === 'Mama')).toMatchObject({ balance: 900, status: 'owes-you' }); // you paid for Mama
+    expect(friends.find(f => f.name === 'Rohan')).toMatchObject({ balance: -300, status: 'you-owe' });
     const credit = ['ICICICC'].filter(looksLikeCredit);
     const w = netWorth(balances, credit, -600);
     expect(w.dues).toBe(58219);
     expect(w.cash).toBe(by.SBI.balance + 5000);
     expect(w.total).toBe(w.cash - 58219 - 600);
+  });
+
+  test('paying for a friend moves value, it does not change net worth', () => {
+    const before = [row('2026-11-01', 'Credit', 1000, { Category: 'Opening Balance' })];
+    const after = [...before, row('2026-11-02', 'Owed', 400, { Name: 'Mama' })];
+    const worthOf = (rs) => netWorth(accountBalances(rs), [], friendBalances(rs).reduce((s, f) => s + f.balance, 0)).total;
+    expect(worthOf(after)).toBe(worthOf(before));
   });
 
   test('credit accounts are guessed from the name', () => {
