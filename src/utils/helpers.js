@@ -10,6 +10,18 @@ export const toNumOrNull = (v) => {
   return isNaN(n) ? null : n;
 };
 
+// ── TRANSACTION TYPES ───────────────────────────────────────────────────────
+export const TX_TYPES = ['Credit', 'Debit', 'Transfer', 'Owes', 'Owed', 'Settled'];
+// Owes / Owed / Settled track money between you and friends, not income or expense
+export const FRIEND_TYPES = new Set(['Owes', 'Owed', 'Settled']);
+// Old spellings from rows entered before Nov 2026
+const LEGACY_TYPES = { Transferd: 'Transfer', Setteled: 'Settled' };
+export const normalizeType = (t) => LEGACY_TYPES[t] || t;
+
+// Rows that set a starting balance: they count toward balances, not toward income or spending
+export const OPENING_CATEGORY = 'Opening Balance';
+export const isOpeningBalance = (r) => r.Category === OPENING_CATEGORY;
+
 export const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
 export const parseSheetDate = (val) => {

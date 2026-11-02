@@ -18,19 +18,19 @@ const MONTH_ORDER = { Jan:1,Feb:2,Mar:3,Apr:4,May:5,Jun:6,Jul:7,Aug:8,Sep:9,Oct:
 const TYPE_COLOR = {
   Credit: PALETTE.green,
   Debit: PALETTE.red,
-  Transferd: PALETTE.yellow,
+  Transfer: PALETTE.yellow,
   Owes: PALETTE.accent,
   Owed: PALETTE.accentAlt,
-  Setteled: PALETTE.muted,
+  Settled: PALETTE.muted,
 };
 
 const TYPE_PREFIX = {
   Credit: '+',
   Debit: '-',
-  Transferd: '⇄',
+  Transfer: '⇄',
   Owes: '+',   // friend owes you — positive for you
   Owed: '-',   // you owe friend — negative for you
-  Setteled: '✓',
+  Settled: '✓',
 };
 
 const TransactionsTab = ({ filtered }) => {

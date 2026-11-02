@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { parseSheetDate, toNum, toNumOrNull, sanitizeString } from '../utils/helpers';
+import { parseSheetDate, toNum, toNumOrNull, sanitizeString, normalizeType } from '../utils/helpers';
 
 export const useSheetData = () => {
   const [rawRecords, setRawRecords] = useState([]);
@@ -18,7 +18,7 @@ export const useSheetData = () => {
       const json = await res.json();
       if (json && json.error) throw new Error(json.error);   // e.g. "Unauthorized" when the access key is missing or wrong
 
-      // Parse Records sheet — includes Credit, Debit, Transferd, Owes, Owed, Setteled
+      // Parse Records sheet — includes Credit, Debit, Transfer, Owes, Owed, Settled (old spellings are mapped)
       // New sheet: "Date" column holds an ISO date string (e.g. "2026-06-09T00:00:00.000Z")
       // There is NO separate "Month" column — we derive month/day/year from the Date field.
       const records = (json.Records || []).map(row => {
@@ -34,7 +34,7 @@ export const useSheetData = () => {
           Description: sanitizeString(row['Description'] || ''),
           Name: sanitizeString(row['Name'] || ''),
           Amount: toNum(row['Amount']),
-          'Transaction Type': sanitizeString(row['Transaction Type'] || ''),
+          'Transaction Type': normalizeType(sanitizeString(row['Transaction Type'] || '')),
           Category: sanitizeString(row['Category'] || ''),
           'Account Name': sanitizeString(row['Account Name'] || ''),
           'To Account': sanitizeString(row['To Account'] || ''),

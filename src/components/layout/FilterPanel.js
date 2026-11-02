@@ -1,16 +1,14 @@
 import React from 'react';
-import { PALETTE } from '../../utils/helpers';
+import { PALETTE, TX_TYPES as ALL_TYPES } from '../../utils/helpers';
 import MultiSelect from '../MultiSelect';
-
-const ALL_TYPES = ['Credit', 'Debit', 'Transferd', 'Owes', 'Owed', 'Setteled'];
 
 const TYPE_COLORS = {
   Credit: PALETTE.green,
   Debit: PALETTE.red,
-  Transferd: PALETTE.yellow,
+  Transfer: PALETTE.yellow,
   Owes: PALETTE.accent,
   Owed: PALETTE.accentAlt,
-  Setteled: PALETTE.muted,
+  Settled: PALETTE.muted,
 };
 
 const PRESETS = [

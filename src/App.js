@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
-import { PALETTE, MONTH_NAMES, obfuscate, deobfuscate, isValidScriptUrl } from "./utils/helpers";
+import { PALETTE, MONTH_NAMES, obfuscate, deobfuscate, isValidScriptUrl, TX_TYPES as ALL_TYPES, FRIEND_TYPES, isOpeningBalance } from "./utils/helpers";
 import { useSheetData } from "./hooks/useSheetData";
 
 import Header from "./components/layout/Header";
@@ -10,10 +10,6 @@ import OverviewTab from "./components/tabs/OverviewTab";
 import TransactionsTab from "./components/tabs/TransactionsTab";
 import FriendsTab from "./components/tabs/FriendsTab";
 
-// All valid transaction types in the new sheet
-const ALL_TYPES = ['Credit', 'Debit', 'Transferd', 'Owes', 'Owed', 'Setteled'];
-// Types that count as "friend debt" transactions (not income/expense)
-const FRIEND_TYPES = new Set(['Owes', 'Owed', 'Setteled']);
 
 export default function App() {
   const [sheetUrl, setSheetUrl] = useState(() => {
@@ -144,10 +140,13 @@ export default function App() {
     });
   }, [rawRecords, selMonths, selTypes, selAccounts, selCategories, search, dateFrom, dateTo, MONTH_NUM]);
 
-  // ── FRIENDS SUMMARY — derived from Owes/Owed/Setteled rows in rawRecords ────
+  // Filtered rows without opening balances: used for income, spending and charts
+  const activity = useMemo(() => filtered.filter(r => !isOpeningBalance(r)), [filtered]);
+
+  // ── FRIENDS SUMMARY — derived from Owes/Owed/Settled rows in rawRecords ────
   // Owes  → friend owes you  → positive balance (you are owed money)
   // Owed  → you owe friend   → negative balance (you owe money)
-  // Setteled → debt cleared  → zero net
+  // Settled → debt cleared  → zero net
   const friendsSummary = useMemo(() => {
     const map = {};
     rawRecords.filter(r => FRIEND_TYPES.has(r['Transaction Type']) && r.Name).forEach(r => {
@@ -156,7 +155,7 @@ export default function App() {
       if (!map[name]) map[name] = 0;
       if (txType === 'Owes') map[name] += r.Amount;       // friend owes you
       else if (txType === 'Owed') map[name] -= r.Amount;  // you owe friend
-      // Setteled contributes 0 (clears via the net balance naturally)
+      // Settled contributes 0 (clears via the net balance naturally)
     });
     return Object.entries(map).map(([name, balance]) => ({
       name,
@@ -169,45 +168,45 @@ export default function App() {
   const totalOwed = useMemo(() => friendsSummary.reduce((s, f) => s + f.balance, 0), [friendsSummary]);
 
   const kpis = useMemo(() => {
-    // Only count Credit/Debit for financial KPIs — Owes/Owed/Setteled are friend-debt tracking
-    const income = filtered.filter(r => r['Transaction Type'] === 'Credit').reduce((s, r) => s + r.Amount, 0);
-    const expense = filtered.filter(r => r['Transaction Type'] === 'Debit').reduce((s, r) => s + r.Amount, 0);
-    const transfers = filtered.filter(r => r['Transaction Type'] === 'Transferd').reduce((s, r) => s + r.Amount, 0);
+    // Only count Credit/Debit for financial KPIs — Owes/Owed/Settled are friend-debt tracking
+    const income = activity.filter(r => r['Transaction Type'] === 'Credit').reduce((s, r) => s + r.Amount, 0);
+    const expense = activity.filter(r => r['Transaction Type'] === 'Debit').reduce((s, r) => s + r.Amount, 0);
+    const transfers = activity.filter(r => r['Transaction Type'] === 'Transfer').reduce((s, r) => s + r.Amount, 0);
 
     const net = income - expense;
     const savingsRate = income > 0 ? ((net / income) * 100).toFixed(1) : 0;
-    return { income, expense, net, transfers, savingsRate, txnCount: filtered.length };
-  }, [filtered]);
+    return { income, expense, net, transfers, savingsRate, txnCount: activity.length };
+  }, [activity]);
 
   const monthlyData = useMemo(() => {
     return allMonths.filter(m => selMonths.includes(m)).map(m => {
-      const rows = filtered.filter(r => r.Month === m);
+      const rows = activity.filter(r => r.Month === m);
       const income = rows.filter(r => r['Transaction Type'] === 'Credit').reduce((s,r)=>s+r.Amount,0);
       const expense = rows.filter(r => r['Transaction Type'] === 'Debit').reduce((s,r)=>s+r.Amount,0);
       return { month: m, Income: income, Expense: expense, Net: income - expense };
     });
-  }, [filtered, selMonths, allMonths]);
+  }, [activity, selMonths, allMonths]);
 
   const categoryData = useMemo(() => {
     const map = {};
-    filtered.filter(r => r['Transaction Type'] === 'Debit' && r.Category).forEach(r => {
+    activity.filter(r => r['Transaction Type'] === 'Debit' && r.Category).forEach(r => {
       map[r.Category] = (map[r.Category] || 0) + r.Amount;
     });
     return Object.entries(map).sort((a,b) => b[1]-a[1]).slice(0, 10).map(([name, value]) => ({ name: name.split(' ').slice(0,2).join(' '), full: name, value }));
-  }, [filtered]);
+  }, [activity]);
 
   const accountData = useMemo(() => {
     const map = {};
-    filtered.filter(r => r['Transaction Type'] === 'Debit').forEach(r => {
+    activity.filter(r => r['Transaction Type'] === 'Debit').forEach(r => {
       if (r['Account Name']) map[r['Account Name']] = (map[r['Account Name']] || 0) + r.Amount;
     });
     return Object.entries(map).sort((a,b)=>b[1]-a[1]).map(([name, value]) => ({ name, value }));
-  }, [filtered]);
+  }, [activity]);
 
   const topTxns = useMemo(() =>
-    [...filtered].filter(r => r['Transaction Type'] === 'Debit' && r.Description)
+    [...activity].filter(r => r['Transaction Type'] === 'Debit' && r.Description)
       .sort((a,b) => b.Amount - a.Amount).slice(0, 8),
-  [filtered]);
+  [activity]);
 
   const currentBalances = useMemo(() => {
   const balances = {};
@@ -219,7 +218,7 @@ export default function App() {
     const type = r['Transaction Type'];
     if (type === 'Credit') balances[acc] += r.Amount;
     else if (type === 'Debit') balances[acc] -= r.Amount;
-    else if (type === 'Transferd') {
+    else if (type === 'Transfer') {
       balances[acc] -= r.Amount;
       if (r['To Account']) {
         if (!balances[r['To Account']]) balances[r['To Account']] = 0;
@@ -228,7 +227,7 @@ export default function App() {
     }
     else if (type === 'Owed') balances[acc] -= r.Amount;  // you paid for friend → money left your account
     else if (type === 'Owes') balances[acc] += r.Amount;  // friend paid you back → money came in (or you're tracking they owe you)
-    // Setteled → no account movement, just clears the friend debt
+    // Settled → no account movement, just clears the friend debt
   });
   return Object.entries(balances)
     .map(([name, balance]) => ({ name, balance }))
@@ -237,7 +236,7 @@ export default function App() {
 
   // ── RECURRING EXPENSES ──────────────────────────────────────────────────────
   const recurringExpenses = useMemo(() => {
-    const debitRows = filtered.filter(r => r['Transaction Type'] === 'Debit' && r.Description);
+    const debitRows = activity.filter(r => r['Transaction Type'] === 'Debit' && r.Description);
     const descMonths = {};
     debitRows.forEach(r => {
       const key = r.Description.toLowerCase().trim();
@@ -250,7 +249,7 @@ export default function App() {
       .sort((a, b) => b.total - a.total)
       .slice(0, 8)
       .map(d => ({ description: d.desc, monthCount: d.months.size, total: d.total, category: d.category }));
-  }, [filtered]);
+  }, [activity]);
 
   // ── SPENDING TREND ────────────────────────────────────────────────────────
   const spendingTrend = useMemo(() => {
