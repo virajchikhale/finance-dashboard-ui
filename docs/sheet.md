@@ -29,7 +29,7 @@ The files in [`templates/`](templates/) are ready-made tabs with headers and a f
 | `Name` | the friend, for `Owes` / `Owed` / `Settled`; otherwise empty |
 | `Amount` | always positive; the type gives the direction |
 | `Transaction Type` | `Credit`, `Debit`, `Transfer`, `Owes`, `Owed` or `Settled` (see [usage.md](usage.md)) |
-| `Category` | from `Dropdowns > Category`, or `Opening Balance` |
+| `Category` | from the list for the type (see [Dropdowns](#dropdowns)), or `Opening Balance`; empty for `Transfer` and `Settled` |
 | `Account Name` | from `Dropdowns > Bank Accounts` |
 | `To Account` | the receiving account, for `Transfer` only |
 | `ID` | filled by the script; stops a retried Shortcut entry being saved twice |
@@ -42,16 +42,26 @@ The files in [`templates/`](templates/) are ready-made tabs with headers and a f
 So rows typed by hand use the same names as the Shortcut:
 
 1. Select the `Category` column in `Records` (from row 2 down).
-2. **Data → Data validation → Add rule → Dropdown (from a range)**, range `Dropdowns!A2:A`.
+2. **Data → Data validation → Add rule → Dropdown (from a range)**, range `Dropdowns!A2:A`. Under **Advanced options** choose **Show a warning** rather than *Reject the input*: a sheet dropdown cannot change with the type, so Credit and friend categories typed by hand would otherwise be refused.
 3. Do the same for `Account Name` and `To Account` (`Dropdowns!B2:B`), `Name` (`Dropdowns!C2:C`), and `Transaction Type` with the six fixed values.
 
 The script copies these rules to each new row it adds.
 
 ## Dropdowns
 
-Three columns with the headers `Category`, `Bank Accounts` and `Friends`. Blank cells are ignored, and the columns can have different lengths. The Shortcut shows exactly these lists, and the script rejects anything not in them, so adding a friend or account here is all it takes.
+Columns, found by header so their order does not matter. Blank cells are ignored, and the columns can have different lengths. The Shortcut shows exactly these lists, and the script rejects anything not in them, so adding a friend or account here is all it takes.
 
-Keep `Other` in the category list if you want a catch-all (the dashboard warns when it grows past 20% of spending), and add `Opening Balance` so hand-typed opening rows pass the sheet's own validation.
+| Header | Used for |
+|---|---|
+| `Category` | `Debit` categories (spending) |
+| `Credit Category` | `Credit` categories (income: salary, refund, interest…) |
+| `Friend Category` | `Owes` and `Owed` categories (trip split, loan…) |
+| `Bank Accounts` | accounts, for `Account Name` and `To Account` |
+| `Friends` | friends, for `Name` |
+
+`Transfer` and `Settled` have no category. A category is required only for `Debit`; if `Credit Category` or `Friend Category` is missing or empty, the Shortcut skips the question for those types.
+
+Keep `Other` in the Debit list if you want a catch-all (the dashboard warns when it grows past 20% of spending), and add `Opening Balance` so hand-typed opening rows pass the sheet's own validation. `Opening Balance` is accepted for every type that has a category, without being in any list.
 
 ## Instalments
 

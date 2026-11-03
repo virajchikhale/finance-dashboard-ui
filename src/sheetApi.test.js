@@ -34,9 +34,10 @@ function load(sheets, { keys = { READ_KEY: READ, WRITE_KEY: KEY } } = {}) {
   const book = {
     Records: fakeSheet([['Date', 'Description', 'Name', 'Amount', 'Transaction Type', 'Category', 'Account Name', 'To Account']]),
     Dropdowns: fakeSheet([
-      ['Category', 'Bank Accounts', 'Friends', 'Category'], // duplicate empty "Category", as in the real sheet
-      ['Rent & Housing', 'SBI', 'Mama', ''],
-      ['Trip', 'HDFCCC', 'Rohan', ''],
+      // duplicate empty "Category", as in the real sheet
+      ['Category', 'Bank Accounts', 'Friends', 'Category', 'Credit Category', 'Friend Category'],
+      ['Rent & Housing', 'SBI', 'Mama', '', 'Salary', 'Trip Split'],
+      ['Trip', 'HDFCCC', 'Rohan', '', 'Refund', 'Loan'],
     ]),
     ...sheets,
   };
@@ -112,6 +113,35 @@ describe('Code.gs doPost', () => {
     expect(res.error).toMatch(msg);
   });
 
+  test('each type checks its own category list', () => {
+    expect(load().post({ ...debit, transactionType: 'Credit', category: 'Salary' }).success).toBe(true);
+    expect(load().post({ ...debit, transactionType: 'Credit', category: 'Trip' }).error)
+      .toMatch(/Unknown category "Trip" for Credit. Add it to Dropdowns > Credit Category/);
+    expect(load().post({ ...debit, category: 'Salary' }).error).toMatch(/for Debit/);
+    const owes = { ...debit, transactionType: 'Owes', name: 'Mama' };
+    expect(load().post({ ...owes, category: 'Loan' }).success).toBe(true);
+    expect(load().post({ ...owes, transactionType: 'Owed', category: 'Trip Split' }).success).toBe(true);
+    expect(load().post({ ...owes, category: 'Trip' }).error).toMatch(/Friend Category/);
+  });
+
+  test('category is optional for Credit, Owes and Owed', () => {
+    expect(load().post({ ...debit, transactionType: 'Credit', category: '' }).success).toBe(true);
+    expect(load().post({ ...debit, transactionType: 'Owed', name: 'Mama', category: '' }).success).toBe(true);
+  });
+
+  test('Transfer and Settled are saved without a category', () => {
+    const { book, post } = load();
+    post({ ...debit, transactionType: 'Transfer', toAccount: 'HDFCCC', category: 'Trip' });
+    post({ ...debit, transactionType: 'Settled', name: 'Mama', category: 'Anything' });
+    expect(book.Records.data[1][5]).toBe('');
+    expect(book.Records.data[2][5]).toBe('');
+  });
+
+  test('Opening Balance is allowed for every type with a category list', () => {
+    expect(load().post({ ...debit, transactionType: 'Credit', category: 'Opening Balance' }).success).toBe(true);
+    expect(load().post({ ...debit, category: 'Opening Balance' }).success).toBe(true);
+  });
+
   test('transfers need a different, known target account', () => {
     const t = { ...debit, transactionType: 'Transfer', category: '' };
     expect(load().post(t).error).toMatch(/toAccount is required/);
@@ -171,6 +201,12 @@ describe('Code.gs doGet', () => {
   test('lists come from Dropdowns, ignoring the duplicate empty Category column', () => {
     expect(load().get({ action: 'lists' })).toEqual({
       categories: ['Rent & Housing', 'Trip'],
+      categoriesByType: {
+        Debit: ['Rent & Housing', 'Trip'],
+        Credit: ['Salary', 'Refund'],
+        Owes: ['Trip Split', 'Loan'],
+        Owed: ['Trip Split', 'Loan'],
+      },
       accounts: ['SBI', 'HDFCCC'],
       friends: ['Mama', 'Rohan'],
       types: ['Credit', 'Debit', 'Transfer', 'Owes', 'Owed', 'Settled'],
@@ -179,7 +215,7 @@ describe('Code.gs doGet', () => {
 
   test('lists put the most recently used items first', () => {
     const { post, get } = load();
-    post({ date: '2026-01-01', description: 'a', amount: '1', transactionType: 'Owes', name: 'Rohan', category: 'Trip', accountName: 'SBI' });
+    post({ date: '2026-01-01', description: 'a', amount: '1', transactionType: 'Owes', name: 'Rohan', category: 'Loan', accountName: 'SBI' });
     post({ date: '2026-01-02', description: 'b', amount: '1', transactionType: 'Transfer', accountName: 'SBI', toAccount: 'HDFCCC' });
     post({ date: '2026-01-03', description: 'c', amount: '1', transactionType: 'Debit', category: 'Rent & Housing', accountName: 'SBI' });
     expect(get({ action: 'lists' })).toMatchObject({
@@ -189,6 +225,16 @@ describe('Code.gs doGet', () => {
     });
     post({ date: '2026-01-04', description: 'd', amount: '1', transactionType: 'Debit', category: 'Trip', accountName: 'HDFCCC' });
     expect(get({ action: 'lists' })).toMatchObject({ categories: ['Trip', 'Rent & Housing'], accounts: ['HDFCCC', 'SBI'] });
+  });
+
+  test('category recency only counts rows of the matching type', () => {
+    const { book, get } = load();
+    // an old Credit row that used a Debit category must not move it up the Debit list
+    book.Records.data.push(['2026-01-01', 'x', '', 1, 'Credit', 'Trip', 'SBI', '']);
+    book.Records.data.push(['2026-01-02', 'y', 'Mama', 1, 'Owed', 'Loan', 'SBI', '']);
+    const lists = get({ action: 'lists' });
+    expect(lists.categories).toEqual(['Rent & Housing', 'Trip']);
+    expect(lists.categoriesByType.Owes).toEqual(['Loan', 'Trip Split']);
   });
 
   test('sheet dump keeps the first of two same-named columns', () => {

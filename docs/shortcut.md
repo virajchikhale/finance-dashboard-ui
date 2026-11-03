@@ -9,9 +9,9 @@ Files: [`shortcut/add-expense.plist`](../shortcut/add-expense.plist) (the shortc
 1. Loads friends, categories and accounts from the sheet, most recently used first. If that fails (wrong key, wrong URL) it shows the reason and stops.
 2. Asks for amount and description. The date is today.
 3. Asks for the type. `Owes`, `Owed` and `Settled` also ask for the friend; `Transfer` also asks for the receiving account.
-4. Asks for the category and the account, then shows a summary. The Name and To Account lines appear only for the types that ask for them.
+4. Asks for the category from the list for that type (none for `Transfer` and `Settled`), then the account, and shows a summary. The Name, Category and To Account lines appear only for the types that ask for them.
 5. Sends the entry with a unique ID, so a retry after a timeout is never saved twice.
-6. Shows **Added Successfully**, or the script's error message (for example *Unknown category "Food". Add it to Dropdowns first*).
+6. Shows **Added Successfully**, or the script's error message (for example *Unknown category "Food" for Debit. Add it to Dropdowns > Category first*).
 
 ## Install
 
@@ -41,7 +41,7 @@ Build it by hand in the Shortcuts app. The steps, in order:
 4. **Current Date** → **Format Date** custom `yyyy-MM-dd` → `txDate`.
 5. **List** `Credit, Debit, Transfer, Owes, Owed, Settled` → **Choose from List** → `txTransactionType`.
 6. **If** type is `Owed`, `Owes` or `Settled`: **Get Dictionary Value** `friends` from `lists` → **Choose from List** → `txName`.
-7. **Get Dictionary Value** `categories` → **Choose from List** → `txCategory`. Same for `accounts` → `txFromAccount`.
+7. **Get Dictionary Value** `categoriesByType` from `lists` → **Get Dictionary Value** with the key `txTransactionType` → `category`. **If** `category` has any value: **Choose from List** → `txCategory`. Then **Get Dictionary Value** `accounts` → **Choose from List** → `txFromAccount`.
 8. **If** type is `Transfer`: **Choose from List** (accounts) → `txToAccount`.
 9. **Get Contents of URL**: `url`, Method **POST**, Request Body **Form**, fields `date`, `description`, `amount`, `transactionType`, `name`, `category`, `accountName`, `toAccount`, `id` (for `id` use **Current Date** formatted `yyyyMMddHHmmssSSS` plus a **Random Number**).
 10. **Get Dictionary Value** `row` from the response. **If** it has any value: **Show Alert** "Added Successfully"; **Otherwise**: show **Get Dictionary Value** `error`.
