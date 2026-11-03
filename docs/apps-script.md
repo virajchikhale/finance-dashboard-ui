@@ -43,7 +43,7 @@ Replace the URL and keys, then run:
 ```bash
 URL='https://script.google.com/macros/s/<id>/exec'
 curl -sL "$URL?key=<READ_KEY>" | head -c 300; echo            # {"Records":[...],"Dropdowns":[...],...}
-curl -sL "$URL?key=<WRITE_KEY>&action=lists"; echo             # {"categories":[...],"accounts":[...],...}
+curl -sL "$URL?key=<WRITE_KEY>&action=lists"; echo             # {"categories":[...],"categoriesByType":{...},"accounts":[...],...}
 curl -sL "$URL?key=<WRITE_KEY>"; echo                          # {"error":"Unauthorized"}: the write key cannot read records
 curl -sL "$URL?key=<WRITE_KEY>" -d description=Test -d amount=1 -d transactionType=Debit -d category=Other -d accountName=Cash; echo
 #                                                                {"success":true,"row":N}; delete that test row afterwards
