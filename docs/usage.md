@@ -22,7 +22,7 @@ Paying a credit card bill from your bank is a `Transfer` from the bank to the ca
 ## Categories
 
 - Pick the closest specific category; use `Other` only when nothing fits. The dashboard warns when `Other` or blank categories exceed 20% of spending, because the category chart is not much use beyond that.
-- Add categories in `Dropdowns > Category`. The Shortcut picks them up on its next run.
+- Each type has its own list in `Dropdowns`: `Category` for Debit, `Credit Category` for Credit, `Friend Category` for Owes and Owed. Transfer and Settled have no category. The Shortcut picks up new entries on its next run.
 - `Opening Balance` is reserved for starting balances (see [sheet.md](sheet.md#starting-fresh-for-example-on-the-1st-of-a-month)).
 
 ## Accounts

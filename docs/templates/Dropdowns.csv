@@ -1,12 +1,11 @@
-Category,Bank Accounts,Friends
-Rent & Housing,Bank,Alex
-Groceries,Cash,Sam
-Eating Out,Card,
-Transport,,
-Health & Insurance,,
-Shopping,,
-Subscriptions,,
-Travel,,
-Salary,,
-Other,,
-Opening Balance,,
+Category,Bank Accounts,Friends,Credit Category,Friend Category
+Rent & Housing,Bank,Alex,Salary,Trip Split
+Groceries,Cash,Sam,Refund,Food Split
+Eating Out,Card,,Interest,Loan
+Transport,,,Cashback,Other
+Health & Insurance,,,Gift,
+Shopping,,,Other,
+Subscriptions,,,Opening Balance,
+Travel,,,,
+Other,,,,
+Opening Balance,,,,

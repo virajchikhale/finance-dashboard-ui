@@ -13,7 +13,8 @@
  *
  *   GET  <web app URL>?key=<READ_KEY>                        -> Records, Instalments, Dropdowns
  *   GET  <web app URL>?key=<READ_KEY or WRITE_KEY>&action=lists -> dropdown lists for the Shortcut pickers,
- *                                                               most recently used first
+ *                                                               most recently used first, with the
+ *                                                               category list for each type
  *   POST <web app URL>?key=<WRITE_KEY>                       -> add one row to Records
  *
  * POST fields (form fields or a JSON body):
@@ -21,7 +22,9 @@
  *   description      required
  *   amount           required, positive number ("1,250" is fine)
  *   transactionType  Credit | Debit | Transfer | Owes | Owed | Settled
- *   category         must be in Dropdowns > Category (or "Opening Balance"); required for Debit
+ *   category         from the list for the type (or "Opening Balance"); required for Debit
+ *                      Debit: Dropdowns > Category, Credit: Credit Category, Owes / Owed: Friend Category
+ *                      Transfer / Settled: none (anything sent is dropped)
  *   accountName      must be in Dropdowns > Bank Accounts; optional for Owes and Settled
  *   toAccount        Transfer only; must be a different bank account
  *   name             Owes / Owed / Settled only; must be in Dropdowns > Friends
@@ -60,7 +63,15 @@ const COLUMNS = {
 const AUTO_COLUMNS = ['id', 'enteredAt'];
 
 // Dropdowns sheet: list name -> header
-const LISTS = { categories: 'Category', accounts: 'Bank Accounts', friends: 'Friends' };
+const LISTS = {
+  categories: 'Category', // Debit
+  creditCategories: 'Credit Category',
+  friendCategories: 'Friend Category', // Owes and Owed
+  accounts: 'Bank Accounts',
+  friends: 'Friends',
+};
+// The category list each type picks from. Transfer and Settled have no category.
+const CATEGORY_LIST = { Debit: 'categories', Credit: 'creditCategories', Owes: 'friendCategories', Owed: 'friendCategories' };
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -129,7 +140,8 @@ function sheetToObjects_(sheet) {
 }
 
 function readLists_(ss) {
-  const out = { categories: [], accounts: [], friends: [], types: TYPES.slice() };
+  const out = { types: TYPES.slice() };
+  Object.keys(LISTS).forEach(list => { out[list] = []; });
   const sheet = ss.getSheetByName(DROPDOWNS_SHEET);
   if (!sheet) return out;
   const [headers, ...rows] = sheet.getDataRange().getValues();
@@ -143,20 +155,33 @@ function readLists_(ss) {
 }
 
 // Records columns that use each list. A transfer's target account counts as using that account.
+// A category list only counts rows of the types that use it.
+function typesUsing_(list) {
+  return Object.keys(CATEGORY_LIST).filter(t => CATEGORY_LIST[t] === list);
+}
 const LIST_USAGE = {
-  categories: [COLUMNS.category],
-  accounts: [COLUMNS.accountName, COLUMNS.toAccount],
-  friends: [COLUMNS.name],
+  categories: { cols: [COLUMNS.category], types: typesUsing_('categories') },
+  creditCategories: { cols: [COLUMNS.category], types: typesUsing_('creditCategories') },
+  friendCategories: { cols: [COLUMNS.category], types: typesUsing_('friendCategories') },
+  accounts: { cols: [COLUMNS.accountName, COLUMNS.toAccount] },
+  friends: { cols: [COLUMNS.name] },
 };
+
+function typeOf_(rec) {
+  const t = str_(rec[COLUMNS.transactionType]);
+  return LEGACY_TYPES[t] || t;
+}
 
 // Puts the most recently used items first. Recency is the row position in Records (lower row = newer).
 // Items never used keep their Dropdowns order after the used ones.
 function sortByRecentUse_(lists, records) {
   const out = Object.assign({}, lists);
   Object.keys(LIST_USAGE).forEach(list => {
+    const { cols, types } = LIST_USAGE[list];
     const lastUsed = {};
     records.forEach((rec, row) => {
-      LIST_USAGE[list].forEach(col => {
+      if (types && !types.includes(typeOf_(rec))) return;
+      cols.forEach(col => {
         const v = str_(rec[col]);
         if (v) lastUsed[v] = row;
       });
@@ -167,6 +192,20 @@ function sortByRecentUse_(lists, records) {
       .map(x => x.item);
   });
   return out;
+}
+
+// The lists as the Shortcut gets them: `categoriesByType` holds the category list for each type that has one,
+// so the Shortcut can look up the chosen type. `categories` (Debit) stays for older Shortcuts.
+function listsResponse_(lists) {
+  const categoriesByType = {};
+  Object.keys(CATEGORY_LIST).forEach(t => { categoriesByType[t] = lists[CATEGORY_LIST[t]]; });
+  return {
+    categories: lists.categories,
+    categoriesByType,
+    accounts: lists.accounts,
+    friends: lists.friends,
+    types: lists.types,
+  };
 }
 
 function str_(v) {
@@ -220,10 +259,11 @@ function validateEntry_(p, lists) {
   const date = parseDate_(p.date);
   if (!date) return { error: `Invalid date "${str_(p.date)}". Use YYYY-MM-DD` };
 
-  const category = str_(p.category);
+  const categoryList = CATEGORY_LIST[type];
+  const category = categoryList ? str_(p.category) : ''; // Transfer and Settled have no category
   const isOpening = category === OPENING_CATEGORY;
-  if (category && !isOpening && !lists.categories.includes(category)) {
-    return { error: `Unknown category "${category}". Add it to Dropdowns first` };
+  if (category && !isOpening && !lists[categoryList].includes(category)) {
+    return { error: `Unknown category "${category}" for ${type}. Add it to Dropdowns > ${LISTS[categoryList]} first` };
   }
   if (type === 'Debit' && !category) return { error: 'category is required for Debit' };
 
@@ -277,7 +317,7 @@ function doGet(e) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   if (isLists) {
     const records = ss.getSheetByName(RECORDS_SHEET);
-    return json_(sortByRecentUse_(readLists_(ss), records ? sheetToObjects_(records) : []));
+    return json_(listsResponse_(sortByRecentUse_(readLists_(ss), records ? sheetToObjects_(records) : [])));
   }
 
   const output = {};

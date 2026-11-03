@@ -5,7 +5,7 @@ The web app URL from [apps-script.md](apps-script.md) is the base. Every call ca
 | Call | Key | Returns |
 |---|---|---|
 | `GET ?key=…` | `READ_KEY` | `{ Records: [...], Instalments: [...], Dropdowns: [...] }`, one object per non-empty row, keyed by header. Dates are ISO strings. |
-| `GET ?key=…&action=lists` | `READ_KEY` or `WRITE_KEY` | `{ categories: [], accounts: [], friends: [], types: [] }` from `Dropdowns` (blank cells skipped) |
+| `GET ?key=…&action=lists` | `READ_KEY` or `WRITE_KEY` | `{ categories: [], categoriesByType: { Debit: [], Credit: [], Owes: [], Owed: [] }, accounts: [], friends: [], types: [] }` from `Dropdowns` (blank cells skipped, most recently used first). `categories` is the Debit list, kept for older Shortcuts |
 | `POST ?key=…` | `WRITE_KEY` | adds one row to `Records` |
 
 A wrong or missing key returns `{ "error": "Unauthorized" }` (GET) or `{ "success": false, "error": "Unauthorized" }` (POST), with HTTP 200, as Apps Script cannot set status codes.
@@ -20,7 +20,7 @@ Send them as form fields (`application/x-www-form-urlencoded`) or as a JSON body
 | `description` | required |
 | `amount` | required, positive; `1,250` is accepted |
 | `transactionType` | `Credit`, `Debit`, `Transfer`, `Owes`, `Owed` or `Settled`. Old spellings `Transferd` / `Setteled` are saved under the new names |
-| `category` | from `Dropdowns > Category` or `Opening Balance`; required for `Debit` |
+| `category` | from the list for the type, or `Opening Balance`: `Debit` → `Category`, `Credit` → `Credit Category`, `Owes` / `Owed` → `Friend Category`. Required for `Debit`. Ignored (saved empty) for `Transfer` and `Settled` |
 | `accountName` | from `Dropdowns > Bank Accounts`; required, except for `Owes`, `Settled` and a friend's opening balance |
 | `toAccount` | `Transfer` only; a different account from the list |
 | `name` | required for `Owes` / `Owed` / `Settled`; from `Dropdowns > Friends`. Kept but not checked for other types |
