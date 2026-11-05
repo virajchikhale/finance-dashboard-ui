@@ -55,6 +55,7 @@ export default function App() {
   const allMonths = useMemo(() => [...new Set(rawRecords.map(r => r.MonthKey).filter(Boolean))].sort(), [rawRecords]);
   const allBanks = useMemo(() => [...new Set(rawRecords.flatMap(r => [r['Account Name'], r['To Account']]).filter(Boolean))].sort(), [rawRecords]);
   const allCategories = useMemo(() => [...new Set(rawRecords.map(r => r.Category))].sort(), [rawRecords]);
+  const allPeople = useMemo(() => [...new Set(rawRecords.map(r => r.Name).filter(Boolean))].sort((a, b) => a.localeCompare(b)), [rawRecords]);
   const creditAccounts = useMemo(() => creditSetting ?? allBanks.filter(looksLikeCredit), [creditSetting, allBanks]);
 
   // ── filter state ────────────────────────────────────────────────────────────
@@ -65,6 +66,7 @@ export default function App() {
   const [selTypes, setSelTypes] = useState([...TX_TYPES]);
   const [selAccounts, setSelAccounts] = useState([]);
   const [selCategories, setSelCategories] = useState([]);
+  const [selPeople, setSelPeople] = useState([]);
   const [search, setSearch] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
@@ -72,11 +74,13 @@ export default function App() {
   useEffect(() => { setSelMonths([...allMonths]); }, [allMonths]);
   useEffect(() => { setSelAccounts([...allBanks]); }, [allBanks]);
   useEffect(() => { setSelCategories([...allCategories]); }, [allCategories]);
+  useEffect(() => { setSelPeople([...allPeople]); }, [allPeople]);
 
   const resetAll = useCallback(() => {
     setSelMonths([...allMonths]); setSelTypes([...TX_TYPES]); setSelAccounts([...allBanks]);
-    setSelCategories([...allCategories]); setSearch(''); setDateFrom(''); setDateTo(''); setActivePreset('all');
-  }, [allMonths, allBanks, allCategories]);
+    setSelCategories([...allCategories]); setSelPeople([...allPeople]);
+    setSearch(''); setDateFrom(''); setDateTo(''); setActivePreset('all');
+  }, [allMonths, allBanks, allCategories, allPeople]);
 
   const applyPreset = (preset) => {
     setActivePreset(preset);
@@ -94,12 +98,14 @@ export default function App() {
       if (!selAccounts.includes(r['Account Name']) && !(r['To Account'] && selAccounts.includes(r['To Account']))
         && !(r['Account Name'] === '' && selAccounts.length === allBanks.length)) return false;
       if (!selCategories.includes(r.Category)) return false;
+      // rows with no person only show while every person is selected
+      if (r.Name ? !selPeople.includes(r.Name) : selPeople.length < allPeople.length) return false;
       if (dateFrom && r.DateISO < dateFrom) return false;
       if (dateTo && r.DateISO > dateTo) return false;
       if (q && ![r.Description, r.Name, r.Category].some(v => v.toLowerCase().includes(q))) return false;
       return true;
     });
-  }, [rawRecords, selMonths, selTypes, selAccounts, allBanks.length, selCategories, search, dateFrom, dateTo]);
+  }, [rawRecords, selMonths, selTypes, selAccounts, allBanks.length, selCategories, selPeople, allPeople.length, search, dateFrom, dateTo]);
 
   // ── derived figures ─────────────────────────────────────────────────────────
   const today = useMemo(() => lastUpdated || new Date(), [lastUpdated]); // "today" = when the data was last loaded
@@ -167,6 +173,7 @@ export default function App() {
               selTypes={selTypes} setSelTypes={setSelTypes}
               allBanks={allBanks} selAccounts={selAccounts} setSelAccounts={setSelAccounts}
               allCategories={allCategories} selCategories={selCategories} setSelCategories={setSelCategories}
+              allPeople={allPeople} selPeople={selPeople} setSelPeople={setSelPeople}
               dateFrom={dateFrom} setDateFrom={setDateFrom} dateTo={dateTo} setDateTo={setDateTo}
               search={search} setSearch={setSearch} filteredCount={filtered.length}
               activePreset={activePreset} onPresetChange={applyPreset} onResetAll={resetAll}
@@ -177,7 +184,12 @@ export default function App() {
                 instalments={rawInstalments} {...overview} />
             )}
             {activeTab === 'transactions' && <TransactionsTab filtered={filtered} />}
-            {activeTab === 'friends' && <FriendsTab friends={friends} rows={filtered} />}
+            {activeTab === 'friends' && (
+              <FriendsTab friends={friends} rows={filtered}
+                person={selPeople.length === 1 && allPeople.length > 1 ? selPeople[0] : null}
+                onPickPerson={(name) => setSelPeople(name ? [name] : [...allPeople])}
+                onViewAll={() => setActiveTab('transactions')} />
+            )}
           </>
         )}
       </main>

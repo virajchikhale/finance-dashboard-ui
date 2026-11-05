@@ -21,12 +21,13 @@ const Chip = ({ children, onRemove }) => (
 const FilterPanel = ({
   open, allMonths, selMonths, setSelMonths, selTypes, setSelTypes,
   allBanks, selAccounts, setSelAccounts, allCategories, selCategories, setSelCategories,
+  allPeople, selPeople, setSelPeople,
   dateFrom, setDateFrom, dateTo, setDateTo, search, setSearch, filteredCount,
   activePreset, onPresetChange, onResetAll,
 }) => {
   const partial = (sel, all) => sel.length < all.length;
   const hasActive = search || dateFrom || dateTo || partial(selMonths, allMonths) || partial(selTypes, TX_TYPES)
-    || partial(selAccounts, allBanks) || partial(selCategories, allCategories);
+    || partial(selAccounts, allBanks) || partial(selCategories, allCategories) || partial(selPeople, allPeople);
 
   return (
     <section className="filters" aria-label="Filters">
@@ -48,6 +49,7 @@ const FilterPanel = ({
             <MultiSelect label="Type" options={TX_TYPES} selected={selTypes} onChange={setSelTypes} />
             <MultiSelect label="Account" options={allBanks} selected={selAccounts} onChange={setSelAccounts} />
             <MultiSelect label="Category" options={allCategories} selected={selCategories} onChange={setSelCategories} />
+            {allPeople.length > 0 && <MultiSelect label="Person" options={allPeople} selected={selPeople} onChange={setSelPeople} />}
             <label className="field">
               <span className="field-label">From</span>
               <input className="input" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
@@ -72,6 +74,9 @@ const FilterPanel = ({
               ))}
               {partial(selAccounts, allBanks) && selAccounts.length <= 3 && selAccounts.map(a => (
                 <Chip key={a} onRemove={() => setSelAccounts(selAccounts.filter(x => x !== a))}>{a}</Chip>
+              ))}
+              {partial(selPeople, allPeople) && selPeople.length <= 3 && selPeople.map(n => (
+                <Chip key={`p-${n}`} onRemove={() => setSelPeople(selPeople.filter(x => x !== n))}>{n}</Chip>
               ))}
               {dateFrom && <Chip onRemove={() => setDateFrom('')}>{`From ${formatDay(dateFrom)}`}</Chip>}
               {dateTo && <Chip onRemove={() => setDateTo('')}>{`To ${formatDay(dateTo)}`}</Chip>}
