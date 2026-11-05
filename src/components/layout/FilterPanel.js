@@ -12,6 +12,8 @@ const PRESETS = [
   { key: 'all', label: 'All time' },
 ];
 
+const personLabel = (n) => n || 'No person';
+
 const Chip = ({ children, onRemove }) => (
   <span className="chip">{children}
     <button type="button" onClick={onRemove} aria-label={`Remove ${children}`}><Icon name="close" className="icon" /></button>
@@ -49,7 +51,8 @@ const FilterPanel = ({
             <MultiSelect label="Type" options={TX_TYPES} selected={selTypes} onChange={setSelTypes} />
             <MultiSelect label="Account" options={allBanks} selected={selAccounts} onChange={setSelAccounts} />
             <MultiSelect label="Category" options={allCategories} selected={selCategories} onChange={setSelCategories} />
-            {allPeople.length > 0 && <MultiSelect label="Person" options={allPeople} selected={selPeople} onChange={setSelPeople} />}
+            {allPeople.some(Boolean) && <MultiSelect label="Person" options={allPeople} selected={selPeople}
+              onChange={setSelPeople} renderLabel={personLabel} />}
             <label className="field">
               <span className="field-label">From</span>
               <input className="input" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
@@ -76,7 +79,7 @@ const FilterPanel = ({
                 <Chip key={a} onRemove={() => setSelAccounts(selAccounts.filter(x => x !== a))}>{a}</Chip>
               ))}
               {partial(selPeople, allPeople) && selPeople.length <= 3 && selPeople.map(n => (
-                <Chip key={`p-${n}`} onRemove={() => setSelPeople(selPeople.filter(x => x !== n))}>{n}</Chip>
+                <Chip key={`p-${n}`} onRemove={() => setSelPeople(selPeople.filter(x => x !== n))}>{personLabel(n)}</Chip>
               ))}
               {dateFrom && <Chip onRemove={() => setDateFrom('')}>{`From ${formatDay(dateFrom)}`}</Chip>}
               {dateTo && <Chip onRemove={() => setDateTo('')}>{`To ${formatDay(dateTo)}`}</Chip>}

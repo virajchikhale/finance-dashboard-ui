@@ -55,7 +55,8 @@ export default function App() {
   const allMonths = useMemo(() => [...new Set(rawRecords.map(r => r.MonthKey).filter(Boolean))].sort(), [rawRecords]);
   const allBanks = useMemo(() => [...new Set(rawRecords.flatMap(r => [r['Account Name'], r['To Account']]).filter(Boolean))].sort(), [rawRecords]);
   const allCategories = useMemo(() => [...new Set(rawRecords.map(r => r.Category))].sort(), [rawRecords]);
-  const allPeople = useMemo(() => [...new Set(rawRecords.map(r => r.Name).filter(Boolean))].sort((a, b) => a.localeCompare(b)), [rawRecords]);
+  // '' stands for rows with no person, shown as "No person" in the filter
+  const allPeople = useMemo(() => [...new Set(rawRecords.map(r => r.Name))].sort((a, b) => a.localeCompare(b)), [rawRecords]);
   const creditAccounts = useMemo(() => creditSetting ?? allBanks.filter(looksLikeCredit), [creditSetting, allBanks]);
 
   // ── filter state ────────────────────────────────────────────────────────────
@@ -98,14 +99,13 @@ export default function App() {
       if (!selAccounts.includes(r['Account Name']) && !(r['To Account'] && selAccounts.includes(r['To Account']))
         && !(r['Account Name'] === '' && selAccounts.length === allBanks.length)) return false;
       if (!selCategories.includes(r.Category)) return false;
-      // rows with no person only show while every person is selected
-      if (r.Name ? !selPeople.includes(r.Name) : selPeople.length < allPeople.length) return false;
+      if (!selPeople.includes(r.Name)) return false;
       if (dateFrom && r.DateISO < dateFrom) return false;
       if (dateTo && r.DateISO > dateTo) return false;
       if (q && ![r.Description, r.Name, r.Category].some(v => v.toLowerCase().includes(q))) return false;
       return true;
     });
-  }, [rawRecords, selMonths, selTypes, selAccounts, allBanks.length, selCategories, selPeople, allPeople.length, search, dateFrom, dateTo]);
+  }, [rawRecords, selMonths, selTypes, selAccounts, allBanks.length, selCategories, selPeople, search, dateFrom, dateTo]);
 
   // ── derived figures ─────────────────────────────────────────────────────────
   const today = useMemo(() => lastUpdated || new Date(), [lastUpdated]); // "today" = when the data was last loaded
@@ -186,7 +186,7 @@ export default function App() {
             {activeTab === 'transactions' && <TransactionsTab filtered={filtered} />}
             {activeTab === 'friends' && (
               <FriendsTab friends={friends} rows={filtered}
-                person={selPeople.length === 1 && allPeople.length > 1 ? selPeople[0] : null}
+                person={selPeople.length === 1 && selPeople[0] ? selPeople[0] : null}
                 onPickPerson={(name) => setSelPeople(name ? [name] : [...allPeople])}
                 onViewAll={() => setActiveTab('transactions')} />
             )}
