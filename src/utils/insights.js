@@ -150,6 +150,26 @@ export function accountBalances(records) {
   return Object.values(acc);
 }
 
+// Balance of one account after each of its rows, oldest first (same rules as accountBalances).
+// Rows on the same day keep their sheet order. Returns a Map from row to balance.
+export function runningBalances(records, name) {
+  const out = new Map();
+  let balance = 0;
+  records.map((r, i) => [r, i])
+    .filter(([r]) => r['Account Name'] === name || (typeOf(r) === 'Transfer' && r['To Account'] === name))
+    .sort(([a, i], [b, j]) => (a.DateISO < b.DateISO ? -1 : a.DateISO > b.DateISO ? 1 : i - j))
+    .forEach(([r]) => {
+      if (r['Account Name'] === name) {
+        const t = typeOf(r);
+        if (t === 'Credit' || t === 'Owes') balance += r.Amount;
+        else if (t === 'Debit' || t === 'Transfer' || t === 'Owed') balance -= r.Amount;
+      }
+      if (typeOf(r) === 'Transfer' && r['To Account'] === name) balance += r.Amount;
+      out.set(r, balance);
+    });
+  return out;
+}
+
 export function friendBalances(records) {
   const map = {};
   records.filter(r => FRIEND_TYPES.has(typeOf(r)) && r.Name).forEach(r => {

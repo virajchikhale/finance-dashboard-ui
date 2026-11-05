@@ -3,7 +3,7 @@ import App from './App';
 import { obfuscate } from './utils/helpers';
 import {
   monthKey, monthLabel, presetMonths, periodTotals, categoryBreakdown, unclassifiedShare, transferSummary,
-  thisMonth, accountBalances, friendBalances, netWorth, looksLikeCredit, daysSince,
+  thisMonth, accountBalances, runningBalances, friendBalances, netWorth, looksLikeCredit, daysSince,
 } from './utils/insights';
 
 // Minimal rows in the shape useSheetData produces
@@ -80,6 +80,16 @@ describe('balances and net worth', () => {
     expect(by.HDFC.balance).toBe(5000);
     expect(by.ICICICC.balance).toBe(1000 - 52404 - 6815);
     expect(by.SBI.lastDate).toBe('2026-11-03');
+  });
+
+  test('running balance ends at the account balance', () => {
+    const nov = rows.filter(r => r.MonthKey === '2026-11');
+    ['SBI', 'HDFC', 'ICICICC'].forEach(name => {
+      const run = runningBalances(nov, name);
+      const ordered = nov.filter(r => run.has(r)).sort((a, b) => (a.DateISO < b.DateISO ? -1 : a.DateISO > b.DateISO ? 1 : 0));
+      expect(run.get(ordered[ordered.length - 1])).toBe(by[name].balance);
+    });
+    expect(runningBalances(nov, 'SBI').get(nov[0])).toBe(77453); // first row: just the opening balance
   });
 
   test('cards are dues, friends add to net worth', () => {

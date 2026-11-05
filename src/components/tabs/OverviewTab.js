@@ -1,6 +1,6 @@
 import React from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { inr, inrSigned, inrShort } from '../../utils/helpers';
+import { useMoney } from '../../privacy';
 import { monthLabel, formatDay, daysSince } from '../../utils/insights';
 import { useChartColors } from '../../theme';
 import ChartTip from '../ChartTip';
@@ -35,46 +35,59 @@ const Card = ({ title, sub, children, className = '' }) => (
 );
 
 // Ranked horizontal bars in plain HTML: readable on a phone, no hover needed
-const RankedBars = ({ items, empty }) => {
+// onPick(name) returns a click handler, or null when that row can't be filtered on
+const RankedBars = ({ items, empty, onPick = () => null }) => {
+  const { inr } = useMoney();
   if (!items.length) return <p className="muted small">{empty}</p>;
   const max = Math.max(...items.map(i => i.value));
   return (
     <ul className="rows">
-      {items.map(i => (
-        <li key={i.name} className="row" style={{ display: 'block' }}>
+      {items.map(i => {
+        const body = <>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
             <span className="row-title">{i.name}</span>
             <span className="row-value num">{inr(i.value)}</span>
           </div>
           <div className="meter" style={{ marginTop: 6 }}><span style={{ width: `${(i.value / max) * 100}%` }} /></div>
-        </li>
-      ))}
+        </>;
+        const pick = onPick(i.name);
+        return (
+          <li key={i.name} className={pick ? undefined : 'row'} style={pick ? undefined : { display: 'block' }}>
+            {pick ? <button type="button" className="row row-btn" style={{ display: 'block' }} title={`Show ${i.name} transactions`} onClick={pick}>{body}</button> : body}
+          </li>
+        );
+      })}
     </ul>
   );
 };
 
-const AccountRow = ({ account, today, credit }) => {
+const AccountRow = ({ account, today, credit, onPick }) => {
+  const { inr, inrSigned } = useMoney();
   const idle = daysSince(account.lastDate, today);
   const owed = credit && account.balance < 0;
   return (
-    <li className="row">
-      <div className="row-main">
-        <div className="row-title">{account.name}</div>
-        <div className="row-sub">
-          {idle !== null && idle > STALE_DAYS
-            ? <span className="badge badge-warn">No entries for {idle} days</span>
-            : account.lastDate ? `Last entry ${formatDay(account.lastDate)}` : 'No entries yet'}
+    <li>
+      <button type="button" className="row row-btn" title={`Show ${account.name} transactions`} onClick={() => onPick(account.name)}>
+        <div className="row-main">
+          <div className="row-title">{account.name}</div>
+          <div className="row-sub">
+            {idle !== null && idle > STALE_DAYS
+              ? <span className="badge badge-warn">No entries for {idle} days</span>
+              : account.lastDate ? `Last entry ${formatDay(account.lastDate)}` : 'No entries yet'}
+          </div>
         </div>
-      </div>
-      <div className={`row-value num${account.balance < 0 && !credit ? ' neg' : ''}`}>
-        {credit ? (owed ? `${inr(account.balance)} due` : account.balance > 0 ? `${inr(account.balance)} credit` : 'Nothing due') : inrSigned(account.balance).replace('+', '')}
-      </div>
+        <div className={`row-value num${account.balance < 0 && !credit ? ' neg' : ''}`}>
+          {credit ? (owed ? `${inr(account.balance)} due` : account.balance > 0 ? `${inr(account.balance)} credit` : 'Nothing due') : inrSigned(account.balance).replace('+', '')}
+        </div>
+      </button>
     </li>
   );
 };
 
-const MonthlyChart = ({ data }) => {
+const MonthlyChart = ({ data, onPickMonth }) => {
   const c = useChartColors();
+  const { inr, inrShort } = useMoney();
+  const pick = (bar) => { const key = bar?.payload?.key ?? bar?.key; if (key) onPickMonth(key); };
   return (
     <>
       <div className="legend" aria-hidden="true" style={{ marginBottom: 8 }}>
@@ -87,8 +100,8 @@ const MonthlyChart = ({ data }) => {
           <XAxis dataKey="label" tick={{ fill: c.axisText, fontSize: 12 }} axisLine={{ stroke: c.axis }} tickLine={false} />
           <YAxis tickFormatter={inrShort} tick={{ fill: c.axisText, fontSize: 12 }} axisLine={false} tickLine={false} width={52} />
           <Tooltip content={<ChartTip />} cursor={{ fill: c.grid, opacity: 0.5 }} />
-          <Bar dataKey="Income" fill={c.series1} radius={[4, 4, 0, 0]} maxBarSize={28} />
-          <Bar dataKey="Spending" fill={c.series2} radius={[4, 4, 0, 0]} maxBarSize={28} />
+          <Bar dataKey="Income" fill={c.series1} radius={[4, 4, 0, 0]} maxBarSize={28} onClick={pick} cursor="pointer" />
+          <Bar dataKey="Spending" fill={c.series2} radius={[4, 4, 0, 0]} maxBarSize={28} onClick={pick} cursor="pointer" />
         </BarChart>
       </ResponsiveContainer>
       <table className="sr-only">
@@ -100,7 +113,10 @@ const MonthlyChart = ({ data }) => {
   );
 };
 
-const OverviewTab = ({ today, month, worth, periodLabel, totals, monthly, categories, unclassified, byAccount, topSpending, transfers, instalments, recurring }) => {
+const OverviewTab = ({ today, month, worth, periodLabel, totals, monthly, categories, unclassified, byAccount, topSpending, transfers, instalments, recurring, onDrill, categoryKey }) => {
+  const { inr, inrSigned } = useMoney();
+  const pickAccount = (name) => onDrill('account', name);
+  const pickCategory = (name) => { const key = categoryKey(name); return key === null ? null : () => onDrill('category', key); };
   const fixedMonthly = instalments.reduce((s, i) => s + i.monthly, 0);
 
   return (
@@ -156,12 +172,12 @@ const OverviewTab = ({ today, month, worth, periodLabel, totals, monthly, catego
             </ul>
           </div>
           <div className="card">
-            <div className="card-head"><h3 className="card-title">Accounts</h3></div>
+            <div className="card-head"><h3 className="card-title">Accounts</h3><span className="card-sub">Pick one to see its transactions</span></div>
             <div className="group-label" style={{ marginTop: 0 }}>Bank and cash</div>
-            <ul className="rows">{worth.bank.map(a => <AccountRow key={a.name} account={a} today={today} />)}</ul>
+            <ul className="rows">{worth.bank.map(a => <AccountRow key={a.name} account={a} today={today} onPick={pickAccount} />)}</ul>
             {worth.credit.length > 0 && <>
               <div className="group-label">Credit cards and pay later</div>
-              <ul className="rows">{worth.credit.map(a => <AccountRow key={a.name} account={a} today={today} credit />)}</ul>
+              <ul className="rows">{worth.credit.map(a => <AccountRow key={a.name} account={a} today={today} credit onPick={pickAccount} />)}</ul>
             </>}
           </div>
         </div>
@@ -185,7 +201,7 @@ const OverviewTab = ({ today, month, worth, periodLabel, totals, monthly, catego
 
         <div className="grid grid-wide" style={{ marginTop: 14 }}>
           <Card title="Income and spending by month">
-            {monthly.length ? <MonthlyChart data={monthly} /> : <p className="muted small">No months selected.</p>}
+            {monthly.length ? <MonthlyChart data={monthly} onPickMonth={(key) => onDrill('month', key)} /> : <p className="muted small">No months selected.</p>}
           </Card>
           <Card title="Spending by category">
             {unclassified.share > 0.2 && (
@@ -194,7 +210,7 @@ const OverviewTab = ({ today, month, worth, periodLabel, totals, monthly, catego
                 <span>{Math.round(unclassified.share * 100)}% of spending ({inr(unclassified.amount)}, {unclassified.count} entries) is under “Other” or has no category. Specific categories make this chart more useful.</span>
               </div>
             )}
-            <RankedBars items={categories} empty="No spending in this period." />
+            <RankedBars items={categories} empty="No spending in this period." onPick={pickCategory} />
           </Card>
         </div>
 
@@ -215,7 +231,7 @@ const OverviewTab = ({ today, month, worth, periodLabel, totals, monthly, catego
             ) : <p className="muted small">No spending in this period.</p>}
           </Card>
           <Card title="Spending by account">
-            <RankedBars items={byAccount} empty="No spending in this period." />
+            <RankedBars items={byAccount} empty="No spending in this period." onPick={(name) => () => pickAccount(name)} />
           </Card>
           <Card title="Moved between accounts" sub={transfers.count ? `${transfers.count} transfers` : ''}>
             {transfers.count ? (

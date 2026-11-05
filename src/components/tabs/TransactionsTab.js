@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { inr } from '../../utils/helpers';
 import { formatDay } from '../../utils/insights';
+import { useMoney } from '../../privacy';
 import Icon from '../Icon';
 
 const COLUMNS = [
@@ -13,6 +14,10 @@ const COLUMNS = [
   { key: 'Amount', label: 'Amount', align: 'right' },
 ];
 
+// Columns that can be empty for every row; they are dropped when they are
+const OPTIONAL = ['Category', 'Account Name', 'Name'];
+const DRILL = { Category: 'category', 'Account Name': 'account', Name: 'person' };
+
 // How each type reads from your point of view
 const SIGN = { Credit: '+', Debit: '−', Owes: '+', Owed: '−' };
 const TONE = { Credit: 'pos', Owes: 'pos' };
@@ -24,8 +29,9 @@ const csvCell = (v) => {
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 };
 
-const TransactionsTab = ({ filtered }) => {
+const TransactionsTab = ({ filtered, balances, balanceAccount, onDrill }) => {
   const [sort, setSort] = useState({ key: 'DateISO', dir: 'desc' });
+  const money = useMoney();
 
   const sorted = useMemo(() => {
     const { key, dir } = sort;
@@ -36,6 +42,19 @@ const TransactionsTab = ({ filtered }) => {
       return va < vb ? -mul : va > vb ? mul : 0;
     });
   }, [filtered, sort]);
+
+  const columns = useMemo(() => {
+    const cols = COLUMNS.filter(c => !OPTIONAL.includes(c.key) || filtered.some(r => r[c.key]));
+    return balances ? [...cols, { key: 'Balance', label: `${balanceAccount} balance`, align: 'right', noSort: true }] : cols;
+  }, [filtered, balances, balanceAccount]);
+
+  // A cell value you can click to filter by it
+  const cell = (r, key) => {
+    const v = r[key];
+    if (!v) return '—';
+    return <button type="button" className="link-btn" title={`Show only ${v}`} onClick={() => onDrill(DRILL[key], v)}>{v}</button>;
+  };
+  const balanceText = (r) => (balances?.has(r) ? money.inrSigned(balances.get(r)).replace('+', '') : '—');
 
   const onSort = (key) => setSort(s => ({ key, dir: s.key === key && s.dir === 'desc' ? 'asc' : 'desc' }));
 
@@ -66,12 +85,14 @@ const TransactionsTab = ({ filtered }) => {
           <table className="table">
             <thead>
               <tr>
-                {COLUMNS.map(c => (
+                {columns.map(c => (
                   <th key={c.key} style={c.align ? { textAlign: c.align } : undefined}
-                    aria-sort={sort.key === c.key ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}>
-                    <button type="button" onClick={() => onSort(c.key)}>
-                      {c.label}{sort.key === c.key && <span aria-hidden="true">{sort.dir === 'asc' ? '↑' : '↓'}</span>}
-                    </button>
+                    aria-sort={c.noSort ? undefined : sort.key === c.key ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}>
+                    {c.noSort ? c.label : (
+                      <button type="button" onClick={() => onSort(c.key)}>
+                        {c.label}{sort.key === c.key && <span aria-hidden="true">{sort.dir === 'asc' ? '↑' : '↓'}</span>}
+                      </button>
+                    )}
                   </th>
                 ))}
               </tr>
@@ -79,13 +100,16 @@ const TransactionsTab = ({ filtered }) => {
             <tbody>
               {sorted.map((r, i) => (
                 <tr key={i}>
-                  <td className="num" style={{ whiteSpace: 'nowrap' }}>{formatDay(r.DateISO)}</td>
-                  <td className="clip">{r.Description || '—'}</td>
-                  <td className="muted">{r.Category || '—'}</td>
-                  <td>{r['Account Name'] || '—'}</td>
-                  <td className="muted" style={{ whiteSpace: 'nowrap' }}>{typeText(r)}</td>
-                  <td className="muted">{r.Name || '—'}</td>
-                  <td className={`amount ${TONE[r['Transaction Type']] || ''}`}>{amountText(r)}</td>
+                  {columns.map(c => {
+                    switch (c.key) {
+                      case 'DateISO': return <td key={c.key} className="num" style={{ whiteSpace: 'nowrap' }}>{formatDay(r.DateISO)}</td>;
+                      case 'Description': return <td key={c.key} className="clip">{r.Description || '—'}</td>;
+                      case 'Transaction Type': return <td key={c.key} className="muted" style={{ whiteSpace: 'nowrap' }}>{typeText(r)}</td>;
+                      case 'Amount': return <td key={c.key} className={`amount ${TONE[r['Transaction Type']] || ''}`}>{amountText(r)}</td>;
+                      case 'Balance': return <td key={c.key} className="amount muted">{balanceText(r)}</td>;
+                      default: return <td key={c.key} className={c.key === 'Account Name' ? '' : 'muted'}>{cell(r, c.key)}</td>;
+                    }
+                  })}
                 </tr>
               ))}
             </tbody>
@@ -105,6 +129,7 @@ const TransactionsTab = ({ filtered }) => {
               <div style={{ textAlign: 'right' }}>
                 <div className={`row-value num ${TONE[r['Transaction Type']] || ''}`}>{amountText(r)}</div>
                 <div className="row-sub">{typeText(r)}</div>
+                {balances?.has(r) && <div className="row-sub">Bal {balanceText(r)}</div>}
               </div>
             </li>
           ))}

@@ -3,7 +3,7 @@ import Icon from '../Icon';
 
 const LABELS = { overview: 'Overview', transactions: 'Transactions', friends: 'Friends' };
 
-const Header = ({ tabs, activeTab, setActiveTab, filtersOpen, setFiltersOpen, lastUpdated, loading, onRefresh, onOpenSettings }) => (
+const Header = ({ tabs, activeTab, setActiveTab, filtersOpen, setFiltersOpen, lastUpdated, loading, onRefresh, onOpenSettings, hideAmounts, onToggleHide }) => (
   <header className="topbar">
     <div className="topbar-inner">
       <div className="brand">
@@ -21,6 +21,10 @@ const Header = ({ tabs, activeTab, setActiveTab, filtersOpen, setFiltersOpen, la
 
       <div className="topbar-actions">
         {lastUpdated && <span className="updated">Updated {lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>}
+        <button type="button" className="btn" aria-pressed={hideAmounts} onClick={onToggleHide}
+          title={hideAmounts ? 'Show amounts' : 'Hide amounts'}>
+          <Icon name={hideAmounts ? 'eyeOff' : 'eye'} /><span className="btn-label">{hideAmounts ? 'Hidden' : 'Hide'}</span>
+        </button>
         <button type="button" className="btn" aria-pressed={filtersOpen} onClick={() => setFiltersOpen(f => !f)} title="Filters">
           <Icon name="filter" /><span className="btn-label">Filters</span>
         </button>

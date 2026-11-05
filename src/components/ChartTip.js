@@ -1,7 +1,8 @@
 import React from 'react';
-import { inr } from '../utils/helpers';
+import { useMoney } from '../privacy';
 
 const ChartTip = ({ active, payload, label }) => {
+  const { inr } = useMoney();
   if (!active || !payload?.length) return null;
   return (
     <div className="tooltip">
